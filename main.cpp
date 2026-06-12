@@ -276,11 +276,6 @@ int main(int argc, char* argv[]) {
     std::string driving_raw = config.getString("boundary_conditions.driving_component", "xx");
     
     if (sim_type == "kmc") {
-        if (is_3d) {
-            std::cerr << "Error: 3D Kinetic Monte Carlo is not implemented in C++." << std::endl;
-            return 1;
-        }
-        
         // 1. Initialize KMC simulator parameters
         double mixed_tol_mpa = config.getDouble("boundary_conditions.mixed_tol", 1.0);
         BarrierGenerator bg;
@@ -319,51 +314,103 @@ int main(int argc, char* argv[]) {
         int M_val = config.getInt("system.M", 20);
         double gamma0_val = config.getDouble("system.gamma0", 0.14);
         int seed_val = config.getInt("seed", 42);
+        bool use_3d_barriers = config.getBool("system.3d_barriers", false);
         
-        // 2. Parse driving component
+        // 2. Parse driving component and mixed targets
         int drv_i = 0, drv_j = 0;
-        if (driving_raw == "xx") { drv_i = 0; drv_j = 0; }
-        else if (driving_raw == "yy") { drv_i = 1; drv_j = 1; }
-        else if (driving_raw == "xy") { drv_i = 0; drv_j = 1; }
-        else if (driving_raw == "yx") { drv_i = 1; drv_j = 0; }
-        
-        std::map<std::string, double> mixed_raw = config.getDict("boundary_conditions.mixed_targets");
         std::map<std::pair<int, int>, double> stress_targets;
-        for (const auto& pair : mixed_raw) {
-            int mi = 0, mj = 0;
-            if (pair.first == "xx") { mi = 0; mj = 0; }
-            else if (pair.first == "yy") { mi = 1; mj = 1; }
-            else if (pair.first == "xy") { mi = 0; mj = 1; }
-            else if (pair.first == "yx") { mi = 1; mj = 0; }
-            else continue;
+        
+        if (is_3d) {
+            if (driving_raw == "xx") { drv_i = 0; drv_j = 0; }
+            else if (driving_raw == "yy") { drv_i = 1; drv_j = 1; }
+            else if (driving_raw == "zz") { drv_i = 2; drv_j = 2; }
+            else if (driving_raw == "xy") { drv_i = 0; drv_j = 1; }
+            else if (driving_raw == "yx") { drv_i = 1; drv_j = 0; }
+            else if (driving_raw == "xz") { drv_i = 0; drv_j = 2; }
+            else if (driving_raw == "zx") { drv_i = 2; drv_j = 0; }
+            else if (driving_raw == "yz") { drv_i = 1; drv_j = 2; }
+            else if (driving_raw == "zy") { drv_i = 2; drv_j = 1; }
             
-            double s_val = pair.second;
-            if (s_val < 1e6) {
-                s_val *= 1e9;
+            std::map<std::string, double> mixed_raw = config.getDict("boundary_conditions.mixed_targets");
+            for (const auto& pair : mixed_raw) {
+                int mi = 0, mj = 0;
+                if (pair.first == "xx") { mi = 0; mj = 0; }
+                else if (pair.first == "yy") { mi = 1; mj = 1; }
+                else if (pair.first == "zz") { mi = 2; mj = 2; }
+                else if (pair.first == "xy") { mi = 0; mj = 1; }
+                else if (pair.first == "yx") { mi = 1; mj = 0; }
+                else if (pair.first == "xz") { mi = 0; mj = 2; }
+                else if (pair.first == "zx") { mi = 2; mj = 0; }
+                else if (pair.first == "yz") { mi = 1; mj = 2; }
+                else if (pair.first == "zy") { mi = 2; mj = 1; }
+                else continue;
+                
+                double s_val = pair.second;
+                if (s_val < 1e6) {
+                    s_val *= 1e9;
+                }
+                stress_targets[{mi, mj}] = s_val;
             }
-            stress_targets[{mi, mj}] = s_val;
+        } else {
+            if (driving_raw == "xx") { drv_i = 0; drv_j = 0; }
+            else if (driving_raw == "yy") { drv_i = 1; drv_j = 1; }
+            else if (driving_raw == "xy") { drv_i = 0; drv_j = 1; }
+            else if (driving_raw == "yx") { drv_i = 1; drv_j = 0; }
+            
+            std::map<std::string, double> mixed_raw = config.getDict("boundary_conditions.mixed_targets");
+            for (const auto& pair : mixed_raw) {
+                int mi = 0, mj = 0;
+                if (pair.first == "xx") { mi = 0; mj = 0; }
+                else if (pair.first == "yy") { mi = 1; mj = 1; }
+                else if (pair.first == "xy") { mi = 0; mj = 1; }
+                else if (pair.first == "yx") { mi = 1; mj = 0; }
+                else continue;
+                
+                double s_val = pair.second;
+                if (s_val < 1e6) {
+                    s_val *= 1e9;
+                }
+                stress_targets[{mi, mj}] = s_val;
+            }
         }
         
-        // 3. Create KmcSimulation2D
-        KmcSimulation2D sim(
-            nx, ny, M_val, gamma0_val, E_field, nu_field, pixel,
-            bg, soft_scheme, soft_cap, jp_val, jt_val, neigh_frac,
-            q_act, out_dir, temp_val, strain_rate_val, stab_thresh, nu0_val,
-            plane_mode, fp_enabled, fp_radius, fp_sync,
-            instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, seed_val
-        );
-        
-        // 4. Run simulation
         double max_kmc_steps_pct = config.getDouble("detection.max_kmc_steps_pct", 0.3);
         
-        sim.run_simulation(
-            n_steps, step_size, {drv_i, drv_j}, stress_targets,
-            mixed_tol_mpa * 1e6, 50, checkpoint_interval, "checkpoint",
-            vtk_interval_str, config.getBool("output.vtk_elastic_only", true),
-            config.getBool("output.track_cascades", false),
-            enable_console, summary_filename, enable_summary, enable_global,
-            max_kmc_steps_pct
-        );
+        if (is_3d) {
+            KmcSimulation3D sim(
+                nx, ny, nz, M_val, gamma0_val, E_field, nu_field, pixel,
+                bg, soft_scheme, soft_cap, jp_val, jt_val, neigh_frac,
+                q_act, out_dir, temp_val, strain_rate_val, stab_thresh, nu0_val,
+                fp_enabled, fp_radius, fp_sync,
+                instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, use_3d_barriers, seed_val
+            );
+            
+            sim.run_simulation(
+                n_steps, step_size, {drv_i, drv_j}, stress_targets,
+                mixed_tol_mpa * 1e6, 50, checkpoint_interval, "checkpoint",
+                vtk_interval_str, config.getBool("output.vtk_elastic_only", true),
+                config.getBool("output.track_cascades", false),
+                enable_console, summary_filename, enable_summary, enable_global,
+                max_kmc_steps_pct
+            );
+        } else {
+            KmcSimulation2D sim(
+                nx, ny, M_val, gamma0_val, E_field, nu_field, pixel,
+                bg, soft_scheme, soft_cap, jp_val, jt_val, neigh_frac,
+                q_act, out_dir, temp_val, strain_rate_val, stab_thresh, nu0_val,
+                plane_mode, fp_enabled, fp_radius, fp_sync,
+                instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, seed_val
+            );
+            
+            sim.run_simulation(
+                n_steps, step_size, {drv_i, drv_j}, stress_targets,
+                mixed_tol_mpa * 1e6, 50, checkpoint_interval, "checkpoint",
+                vtk_interval_str, config.getBool("output.vtk_elastic_only", true),
+                config.getBool("output.track_cascades", false),
+                enable_console, summary_filename, enable_summary, enable_global,
+                max_kmc_steps_pct
+            );
+        }
         
         return 0;
     }

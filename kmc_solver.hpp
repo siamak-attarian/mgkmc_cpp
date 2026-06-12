@@ -580,20 +580,20 @@ public:
             f_global << std::left << std::setw(10) << "GlobalStep" << " "
                      << std::setw(12) << "ElasticStep" << " "
                      << std::setw(10) << "KMCStep" << " "
-                     << std::setw(14) << "Eps_xx" << " "
-                     << std::setw(14) << "Eps_yy" << " "
-                     << std::setw(14) << "Eps_zz" << " "
-                     << std::setw(14) << "Eps_xy" << " "
-                     << std::setw(14) << "Eps_xz" << " "
-                     << std::setw(14) << "Eps_yz" << " "
-                     << std::setw(14) << "Sig_xx(GPa)" << " "
-                     << std::setw(14) << "Sig_yy(GPa)" << " "
-                     << std::setw(14) << "Sig_zz(GPa)" << " "
-                     << std::setw(14) << "Sig_xy(GPa)" << " "
-                     << std::setw(14) << "Sig_xz(GPa)" << " "
-                     << std::setw(14) << "Sig_yz(GPa)" << " "
-                     << std::setw(13) << "CascadeSteps" << " "
-                     << std::setw(16) << "TotalCascadeFlips" << " "
+                     << std::setw(15) << "Eps_xx" << " "
+                     << std::setw(15) << "Eps_yy" << " "
+                     << std::setw(15) << "Eps_zz" << " "
+                     << std::setw(15) << "Eps_xy" << " "
+                     << std::setw(15) << "Eps_xz" << " "
+                     << std::setw(15) << "Eps_yz" << " "
+                     << std::setw(15) << "Sig_xx(GPa)" << " "
+                     << std::setw(15) << "Sig_yy(GPa)" << " "
+                     << std::setw(15) << "Sig_zz(GPa)" << " "
+                     << std::setw(15) << "Sig_xy(GPa)" << " "
+                     << std::setw(15) << "Sig_xz(GPa)" << " "
+                     << std::setw(15) << "Sig_yz(GPa)" << " "
+                     << std::setw(14) << "CascadeSteps" << " "
+                     << std::setw(17) << "TotalCascadeFlips" << " "
                      << "SimTime(s)\n";
         }
     }
@@ -610,6 +610,27 @@ public:
         std::chrono::high_resolution_clock::time_point start_time_total,
         std::string vtk_interval_str, bool vtk_elastic_only
     ) {
+        if (step_type == "INIT") {
+            // Only handle VTK export for step 0
+            bool save_vtk = false;
+            std::string vt_name = "";
+            if (vtk_interval_str != "none" && vtk_interval_str != "last") {
+                if (vtk_interval_str == "current") {
+                    vt_name = output_dir + "/step.vtu";
+                    save_vtk = true;
+                } else {
+                    std::stringstream ss;
+                    ss << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << 0 << ".vtu";
+                    vt_name = ss.str();
+                    save_vtk = true;
+                }
+            }
+            if (save_vtk && !vt_name.empty()) {
+                export_to_vtu_2d(vt_name, nx, ny, eps_field, sig_field, E_field, nu_field, pixel, {}, eps_plastic, soft_prop);
+            }
+            return;
+        }
+
         Eigen::Matrix2d epsM = eps_macro;
         Eigen::Matrix2d sigM = sig_macro;
         
@@ -651,7 +672,7 @@ public:
             char g_buf[1024];
             snprintf(
                 g_buf, sizeof(g_buf),
-                "%-10d %-12d %-10d %-14.6f %-14.6f %-14.6f %-14.6f %-14.6f %-14.6f %-14.3f %-14.3f %-14.3f %-14.3f %-14.3f %-14.3f %-13d %-16d %-15.6e\n",
+                "%-10d %-12d %-10d %-15.6f %-15.6f %-15.6f %-15.6f %-15.6f %-15.6f %-15.3f %-15.3f %-15.3f %-15.3f %-15.3f %-15.3f %-14d %-17d %-15.6e\n",
                 global_step, elastic_steps_done, total_kmc_steps,
                 epsM(0, 0), epsM(1, 1), 0.0, epsM(0, 1), 0.0, 0.0,
                 sigM(0, 0) / 1e9, sigM(1, 1) / 1e9, sig_zz / 1e9, sigM(0, 1) / 1e9, 0.0, 0.0,
@@ -673,7 +694,7 @@ public:
                     if (interval > 0) {
                         bool count_ok = false;
                         if (vtk_elastic_only) {
-                            if ((step_type == "INIT" || step_type == "ELAST") && elastic_steps_done % interval == 0) {
+                            if ((step_type == "INIT" || step_type == "ELASTIC") && elastic_steps_done % interval == 0) {
                                 count_ok = true;
                             }
                         } else {
@@ -683,7 +704,7 @@ public:
                         }
                         if (count_ok) {
                             std::stringstream ss;
-                            ss << output_dir << "/step_" << std::setfill('0') << std::setw(5) << global_step << ".vtu";
+                            ss << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << global_step << ".vtu";
                             vt_name = ss.str();
                             save_vtk = true;
                         }
@@ -907,12 +928,12 @@ public:
                             return;
                         }
                         
-                        total_kmc_steps++;
                         do_logging(
                             step, elastic_steps_done, total_kmc_steps, log_type,
                             0, 1, component, enable_console_log, start_time_total,
                             vtk_interval, vtk_elastic_only
                         );
+                        total_kmc_steps++;
                         step++;
                         continue;
                     }
@@ -967,13 +988,1058 @@ public:
             
             elastic_steps_done++;
             do_logging(
-                step, elastic_steps_done, total_kmc_steps, "ELAST",
+                step, elastic_steps_done, total_kmc_steps, "ELASTIC",
                 0, 0, component, enable_console_log, start_time_total,
                 vtk_interval, vtk_elastic_only
             );
             step++;
         }
         
+        // Final VTK output logic matching Python
+        if (vtk_interval != "none") {
+            bool export_final = false;
+            if (vtk_interval == "last") {
+                export_final = true;
+            } else {
+                try {
+                    int interval = std::stoi(vtk_interval);
+                    if (interval > 0 && (step - 1) % interval != 0) {
+                        export_final = true;
+                    }
+                } catch (...) {}
+            }
+            if (export_final) {
+                std::stringstream ss_vt;
+                ss_vt << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << (step - 1) << "_final.vtu";
+                export_to_vtu_2d(ss_vt.str(), nx, ny, eps_field, sig_field, E_field, nu_field, pixel, {}, eps_plastic, soft_prop);
+            }
+        }
+
+        double total_duration = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_time_total).count();
+        int h = static_cast<int>(total_duration / 3600.0);
+        int m = static_cast<int>((total_duration - h * 3600.0) / 60.0);
+        double s = total_duration - h * 3600.0 - m * 60.0;
+        
+        std::stringstream ss;
+        ss << "\nSimulation Finish Time: " << get_current_timestamp() << "\n"
+           << "Total Duration: " << std::fixed << std::setprecision(2) << total_duration << " seconds ("
+           << h << "h " << std::setw(2) << std::setfill('0') << m << "m " << std::setw(2) << std::setfill('0') << static_cast<int>(s) << "s)\n";
+        
+        std::string finish_str = ss.str();
+        if (f_summary.is_open()) {
+            f_summary << finish_str;
+        }
+        if (enable_console_log) {
+            std::cout << finish_str;
+        }
+        
+        close_logs();
+    }
+};
+
+class KmcSimulation3D {
+private:
+    Eigen::Matrix3d stz_mode_glass(double g0, std::mt19937& r_gen) {
+        std::normal_distribution<double> gaussian(0.0, 1.0);
+        double gxx = 0.5 * g0 * gaussian(r_gen);
+        double gxy = 0.5 * g0 * gaussian(r_gen);
+        Eigen::Matrix3d G = Eigen::Matrix3d::Zero();
+        G(0, 0) = gxx;
+        G(1, 1) = -gxx;
+        G(0, 1) = gxy;
+        G(1, 0) = gxy;
+        return G;
+    }
+
+    Eigen::Matrix3d stz_mode_glass_3d(double g0, std::mt19937& r_gen) {
+        std::normal_distribution<double> gaussian(0.0, 1.0);
+        Eigen::Matrix3d M;
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                M(i, j) = gaussian(r_gen);
+            }
+        }
+        Eigen::Matrix3d M_sym = 0.5 * (M + M.transpose());
+        Eigen::Matrix3d G = M_sym - (1.0 / 3.0) * M_sym.trace() * Eigen::Matrix3d::Identity();
+        double norm = G.norm(); // Frobenius norm
+        if (norm < 1e-12) {
+            return Eigen::Matrix3d::Zero();
+        }
+        G = G * (1.0 / (std::sqrt(2.0) * norm));
+        
+        std::uniform_real_distribution<double> uniform_dist(1e-15, 1.0);
+        double u = uniform_dist(r_gen);
+        double mag = g0 * std::sqrt(-2.0 * std::log(u));
+        return G * mag;
+    }
+
+public:
+    int nx, ny, nz;
+    int M;
+    double gamma0;
+    double pixel;
+    double volume;
+    std::string output_dir;
+    
+    // Physics parameters
+    std::string softening_scheme;
+    double softening_cap;
+    double jp, jt;
+    double neighbor_softening_fraction;
+    double temperature;
+    double strain_rate;
+    double stability_threshold;
+    double nu0;
+    double q_act_temp;
+    
+    // Fast Patching Flags
+    bool fast_patching_enabled;
+    int patch_radius;
+    int sync_interval;
+    int flips_since_sync;
+    
+    // Dynamics modes
+    std::string instability_mode;
+    std::string cascade_timing;
+    bool scale_rate_by_volume;
+    bool redraw_directions;
+    bool redraw_barriers;
+    double tau;
+    bool use_3d_barriers;
+    
+    // Fields
+    std::vector<double> E_field;
+    std::vector<double> nu_field;
+    std::vector<Eigen::Matrix3d> eps_field;
+    std::vector<Eigen::Matrix3d> sig_field;
+    std::vector<Eigen::Matrix3d> eps_plastic;
+    std::vector<Eigen::Vector2d> soft_prop; // [g_p, g_t]
+    std::vector<double> last_event_time;
+    Eigen::Matrix3d eps_macro;
+    Eigen::Matrix3d sig_macro;
+    double time;
+    
+    // Barriers and Catalog
+    std::vector<double> Q; // nx * ny * nz * M
+    std::vector<double> Q0; // nx * ny * nz * M
+    std::vector<Eigen::Matrix3d> catalog; // nx * ny * nz * M
+    std::vector<Eigen::Matrix3d> prev_strain_dir; // nx * ny * nz
+    
+    std::vector<GreenTensor3D> Gamma;
+    BarrierGenerator barrier_gen;
+    std::mt19937 rng;
+    
+    // Fast Patching data structures
+    std::vector<std::vector<Eigen::Matrix3d>> patch_kernels; // 5 bases
+    std::vector<Eigen::Matrix3d> patch_missing_mean; // 5 bases
+    Eigen::Matrix3d sigma_macro_unit;
+    bool sigma_macro_unit_initialized;
+    
+    // File streams
+    std::ofstream f_summary;
+    std::ofstream f_global;
+    
+    KmcSimulation3D(
+        int nx_, int ny_, int nz_, int M_, double gamma0_, 
+        const std::vector<double>& E_field_, const std::vector<double>& nu_field_,
+        double pixel_ = 1.0,
+        const BarrierGenerator& barrier_gen_ = BarrierGenerator(),
+        std::string softening_scheme_ = "isotropic",
+        double softening_cap_ = 2.0, double jp_ = 10.0, double jt_ = 30.0,
+        double neighbor_softening_fraction_ = 0.0,
+        double q_act_temp_ = 0.37, std::string output_dir_ = "output",
+        double temperature_ = 0.0, double strain_rate_ = 1.0,
+        double stability_threshold_ = 0.0, double nu0_ = 1e13,
+        bool fast_patching_enabled_ = false, int patch_radius_ = 5, int sync_interval_ = 100,
+        std::string instability_mode_ = "cascade", std::string cascade_timing_ = "none",
+        bool scale_rate_by_volume_ = true,
+        bool redraw_directions_ = true, bool redraw_barriers_ = true,
+        bool use_3d_barriers_ = false,
+        int seed_ = 42
+    ) : nx(nx_), ny(ny_), nz(nz_), M(M_), gamma0(gamma0_), pixel(pixel_), volume(pixel_ * pixel_ * pixel_),
+        output_dir(output_dir_), softening_scheme(softening_scheme_), softening_cap(softening_cap_),
+        jp(jp_), jt(jt_), neighbor_softening_fraction(neighbor_softening_fraction_),
+        temperature(temperature_), strain_rate(strain_rate_), stability_threshold(stability_threshold_),
+        nu0(nu0_), q_act_temp(q_act_temp_),
+        fast_patching_enabled(fast_patching_enabled_), patch_radius(patch_radius_), sync_interval(sync_interval_),
+        flips_since_sync(0), instability_mode(instability_mode_), cascade_timing(cascade_timing_),
+        scale_rate_by_volume(scale_rate_by_volume_),
+        redraw_directions(redraw_directions_), redraw_barriers(redraw_barriers_),
+        use_3d_barriers(use_3d_barriers_),
+        barrier_gen(barrier_gen_), rng(seed_), sigma_macro_unit_initialized(false)
+    {
+        E_field = E_field_;
+        nu_field = nu_field_;
+        
+        int N = nx * ny * nz;
+        eps_field.assign(N, Eigen::Matrix3d::Zero());
+        sig_field.assign(N, Eigen::Matrix3d::Zero());
+        eps_plastic.assign(N, Eigen::Matrix3d::Zero());
+        soft_prop.assign(N, Eigen::Vector2d::Zero());
+        last_event_time.assign(N, -std::numeric_limits<double>::infinity());
+        eps_macro = Eigen::Matrix3d::Zero();
+        sig_macro = Eigen::Matrix3d::Zero();
+        time = 0.0;
+        
+        // Physics param: tau
+        if (temperature > 0.0) {
+            double kB = 8.617e-5; // eV/K
+            tau = 1.0 / (nu0 * std::exp(-q_act_temp / (kB * temperature)));
+            std::cout << " [KmcSimulation3D] T=" << temperature << "K > 0: Calculated Dynamic Softening Decay (tau): " << tau << " s" << std::endl;
+        } else {
+            tau = std::numeric_limits<double>::infinity();
+            std::cout << " [KmcSimulation3D] T=0K: Softening Decay (tau): Infinite (No decay)" << std::endl;
+        }
+        
+        // Initialize barriers & catalog
+        Q.assign(N * M, 0.0);
+        Q0.resize(N * M);
+        catalog.resize(N * M);
+        prev_strain_dir.assign(N, Eigen::Matrix3d::Zero());
+        
+        for (int x = 0; x < nx; ++x) {
+            for (int y = 0; y < ny; ++y) {
+                for (int z = 0; z < nz; ++z) {
+                    int voxel_idx = x * (ny * nz) + y * nz + z;
+                    for (int m = 0; m < M; ++m) {
+                        int mode_idx = voxel_idx * M + m;
+                        Q0[mode_idx] = barrier_gen.generate(rng);
+                        if (use_3d_barriers) {
+                            catalog[mode_idx] = stz_mode_glass_3d(gamma0, rng);
+                        } else {
+                            catalog[mode_idx] = stz_mode_glass(gamma0, rng);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Precompute Gamma
+        double E_sum = 0.0;
+        double nu_sum = 0.0;
+        for (int i = 0; i < N; ++i) {
+            E_sum += E_field[i];
+            nu_sum += nu_field[i];
+        }
+        double E_avg = E_sum / N;
+        double nu_avg = nu_sum / N;
+        init_gamma(E_avg, nu_avg);
+        
+        // Precompute patches if fast patching enabled
+        if (fast_patching_enabled) {
+            precompute_patch_kernels();
+        }
+    }
+    
+    void init_gamma(double E_avg, double nu_avg) {
+        auto [lam0, mu0] = compute_lame_3d(E_avg, nu_avg);
+        double Lx = nx * pixel;
+        double Ly = ny * pixel;
+        double Lz = nz * pixel;
+        std::vector<double> kx(nx * ny * nz), ky(nx * ny * nz), kz(nx * ny * nz);
+        std::vector<double> kx_1d = fftfreq(nx, Lx / nx);
+        std::vector<double> ky_1d = fftfreq(ny, Ly / ny);
+        std::vector<double> kz_1d = fftfreq(nz, Lz / nz);
+        for (int x = 0; x < nx; ++x) {
+            for (int y = 0; y < ny; ++y) {
+                for (int z = 0; z < nz; ++z) {
+                    int idx = x * (ny * nz) + y * nz + z;
+                    kx[idx] = 2.0 * M_PI * kx_1d[x];
+                    ky[idx] = 2.0 * M_PI * ky_1d[y];
+                    kz[idx] = 2.0 * M_PI * kz_1d[z];
+                }
+            }
+        }
+        Gamma = green_operator_3d(nx, ny, nz, kx, ky, kz, lam0, mu0);
+    }
+    
+    void precompute_patch_kernels() {
+        std::cout << "\n [KmcSimulation3D] Pre-computing Stress Patches (Radius=" << patch_radius << ")..." << std::endl;
+        int R = patch_radius;
+        int nx_center = nx / 2;
+        int ny_center = ny / 2;
+        int nz_center = nz / 2;
+        int N = nx * ny * nz;
+        
+        // 5 deviatoric bases
+        std::vector<Eigen::Matrix3d> bases(5);
+        bases[0] << 1.0, 0.0, 0.0,
+                    0.0, -1.0, 0.0,
+                    0.0, 0.0, 0.0;
+                    
+        bases[1] << 0.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, -1.0;
+                    
+        bases[2] << 0.0, 1.0, 0.0,
+                    1.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0;
+                    
+        bases[3] << 0.0, 0.0, 1.0,
+                    0.0, 0.0, 0.0,
+                    1.0, 0.0, 0.0;
+                    
+        bases[4] << 0.0, 0.0, 0.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 1.0, 0.0;
+        
+        patch_kernels.resize(5);
+        patch_missing_mean.resize(5);
+        
+        for (int b = 0; b < 5; ++b) {
+            std::vector<Eigen::Matrix3d> temp_eps_plas(N, Eigen::Matrix3d::Zero());
+            temp_eps_plas[nx_center * (ny * nz) + ny_center * nz + nz_center] = bases[b];
+            
+            std::vector<Eigen::Matrix3d> temp_eps;
+            std::vector<Eigen::Matrix3d> temp_sig;
+            Eigen::Matrix3d temp_eps_macro = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d temp_sig_macro = Eigen::Matrix3d::Zero();
+            
+            spectral_solver_3d(
+                nx, ny, nz, E_field, nu_field, temp_eps_macro, Gamma,
+                temp_eps, temp_sig, temp_eps_macro, temp_sig_macro, 200, 1e-6, false, temp_eps_plas
+            );
+            
+            int side = 2 * R + 1;
+            int side_z = (nz > 1 ? 2 * R + 1 : 1);
+            patch_kernels[b].assign(side * side * side_z, Eigen::Matrix3d::Zero());
+            Eigen::Matrix3d sum_crop = Eigen::Matrix3d::Zero();
+            
+            for (int dx = -R; dx <= R; ++dx) {
+                for (int dy = -R; dy <= R; ++dy) {
+                    for (int dz = (nz > 1 ? -R : 0); dz <= (nz > 1 ? R : 0); ++dz) {
+                        int sx = (nx_center + dx + nx) % nx;
+                        int sy = (ny_center + dy + ny) % ny;
+                        int sz = (nz_center + dz + nz) % nz;
+                        Eigen::Matrix3d val = temp_sig[sx * (ny * nz) + sy * nz + sz];
+                        
+                        int crop_idx = ((dx + R) * side + (dy + R)) * side_z + (nz > 1 ? (dz + R) : 0);
+                        patch_kernels[b][crop_idx] = val;
+                        sum_crop += val;
+                    }
+                }
+            }
+            
+            Eigen::Matrix3d sum_sig = Eigen::Matrix3d::Zero();
+            for (int i = 0; i < N; ++i) {
+                sum_sig += temp_sig[i];
+            }
+            Eigen::Matrix3d mean_sig = sum_sig / N;
+            patch_missing_mean[b] = mean_sig - sum_crop / N;
+        }
+        std::cout << " [KmcSimulation3D] Fast Patching Kernels Ready." << std::endl;
+    }
+    
+    void elastic_run() {
+        spectral_solver_3d(
+            nx, ny, nz, E_field, nu_field, eps_macro, Gamma,
+            eps_field, sig_field, eps_macro, sig_macro, 200, 1e-6, false, eps_plastic
+        );
+    }
+    
+    void update_barriers() {
+        int scheme_idx = (softening_scheme == "directional" ? 1 : 0);
+        double GPa_nm3_to_eV = 6.241509;
+        
+        for (int x = 0; x < nx; ++x) {
+            for (int y = 0; y < ny; ++y) {
+                for (int z = 0; z < nz; ++z) {
+                    int voxel_idx = x * (ny * nz) + y * nz + z;
+                    double g_t = soft_prop[voxel_idx](1);
+                    double t_last = last_event_time[voxel_idx];
+                    
+                    double g_t_curr = 0.0;
+                    if (g_t > 0.0) {
+                        if (std::isinf(tau)) {
+                            g_t_curr = g_t;
+                        } else if (t_last == -std::numeric_limits<double>::infinity()) {
+                            g_t_curr = 0.0;
+                        } else {
+                            double dt = time - t_last;
+                            if (dt < 0.0) dt = 0.0;
+                            g_t_curr = g_t * std::exp(-dt / tau);
+                        }
+                    }
+                    
+                    double g_p = soft_prop[voxel_idx](0);
+                    double g_base = g_p + g_t_curr;
+                    if (softening_cap > 0.0 && g_base > softening_cap) {
+                        g_base = softening_cap;
+                    }
+                    
+                    for (int m = 0; m < M; ++m) {
+                        int mode_idx = voxel_idx * M + m;
+                        double modifier = 1.0;
+                        if (scheme_idx == 1) { // Directional
+                            double dot_prod = 0.0;
+                            double norm_mode_sq = 0.0;
+                            double norm_prev_sq = 0.0;
+                            for (int i = 0; i < 3; ++i) {
+                                for (int j = 0; j < 3; ++j) {
+                                    double val_m = catalog[mode_idx](i, j);
+                                    double val_p = prev_strain_dir[voxel_idx](i, j);
+                                    dot_prod += val_m * val_p;
+                                    norm_mode_sq += val_m * val_m;
+                                    norm_prev_sq += val_p * val_p;
+                                }
+                            }
+                            double norm_prev = std::sqrt(norm_prev_sq);
+                            double norm_mode = std::sqrt(norm_mode_sq);
+                            if (norm_prev < 1e-12 || norm_mode < 1e-12) {
+                                modifier = 1.0;
+                            } else {
+                                double cos_theta = dot_prod / (norm_mode * norm_prev);
+                                modifier = std::pow(1.0 + cos_theta, 2.0) / 4.0;
+                            }
+                        }
+                        
+                        double g_eff = modifier * g_base;
+                        
+                        double w_sum = 0.0;
+                        for (int i = 0; i < 3; ++i) {
+                            for (int j = 0; j < 3; ++j) {
+                                w_sum += sig_field[voxel_idx](i, j) * catalog[mode_idx](i, j);
+                            }
+                        }
+                        
+                        double w_val = 0.5 * volume * (w_sum / 1e9) * GPa_nm3_to_eV;
+                        Q[mode_idx] = Q0[mode_idx] * std::exp(-g_eff) - w_val;
+                    }
+                }
+            }
+        }
+    }
+    
+    std::vector<int> find_unstable_indices() {
+        std::vector<int> unstable;
+        int size = Q.size();
+        for (int i = 0; i < size; ++i) {
+            if (Q[i] < stability_threshold) {
+                unstable.push_back(i);
+            }
+        }
+        return unstable;
+    }
+    
+    void apply_flip_soa_3d(int x, int y, int z, int m) {
+        int voxel_idx = x * (ny * nz) + y * nz + z;
+        int mode_idx = voxel_idx * M + m;
+        
+        // 1. Update plastic strain
+        eps_plastic[voxel_idx] += catalog[mode_idx];
+        
+        // 2. Update Softening (3D VM equivalent strain)
+        double e11 = catalog[mode_idx](0, 0);
+        double e22 = catalog[mode_idx](1, 1);
+        double e33 = catalog[mode_idx](2, 2);
+        double e12 = catalog[mode_idx](0, 1);
+        double e13 = catalog[mode_idx](0, 2);
+        double e23 = catalog[mode_idx](1, 2);
+        
+        double sum_sq = (e12 * e12 + e23 * e23 + e13 * e13) + 
+                        (std::pow(e22 - e33, 2.0) + std::pow(e33 - e11, 2.0) + std::pow(e11 - e22, 2.0)) / 6.0;
+        
+        double gp_new = soft_prop[voxel_idx](0) + jp * sum_sq;
+        if (softening_cap > 0.0 && gp_new > softening_cap) {
+            gp_new = softening_cap;
+        }
+        soft_prop[voxel_idx](0) = gp_new;
+        soft_prop[voxel_idx](1) = jt * sum_sq;
+        last_event_time[voxel_idx] = time;
+        
+        // 3. Neighbor Softening (3D: 26 neighbors)
+        if (neighbor_softening_fraction > 0.0) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dz = -1; dz <= 1; ++dz) {
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
+                        int nx_n = (x + dx + nx) % nx;
+                        int ny_n = (y + dy + ny) % ny;
+                        int nz_n = (z + dz + nz) % nz;
+                        int neighbor_idx = nx_n * (ny * nz) + ny_n * nz + nz_n;
+                        
+                        double gp_n = soft_prop[neighbor_idx](0) + neighbor_softening_fraction * jp * sum_sq;
+                        if (softening_cap > 0.0 && gp_n > softening_cap) {
+                            gp_n = softening_cap;
+                        }
+                        soft_prop[neighbor_idx](0) = gp_n;
+                        soft_prop[neighbor_idx](1) += neighbor_softening_fraction * jt * sum_sq;
+                    }
+                }
+            }
+        }
+    }
+    
+    std::pair<int, int> run_cascade(int step, std::pair<int, int> component) {
+        int total_flips = 0;
+        int local_step = 0;
+        int limit = nx * ny * nz;
+        
+        while (true) {
+            update_barriers();
+            std::vector<int> unstable = find_unstable_indices();
+            int n_unstable = unstable.size();
+            if (n_unstable == 0) break;
+            
+            // Sort by Q value
+            std::sort(unstable.begin(), unstable.end(), [this](int a, int b) {
+                return Q[a] < Q[b];
+            });
+            
+            std::vector<bool> flipped_voxels_in_batch(nx * ny * nz, false);
+            int flips_in_this_batch = 0;
+            
+            for (int k = 0; k < n_unstable; ++k) {
+                int mode_idx = unstable[k];
+                int m = mode_idx % M;
+                int voxel_idx = mode_idx / M;
+                
+                int temp = voxel_idx;
+                int z = temp % nz;
+                temp = temp / nz;
+                int y = temp % ny;
+                int x = temp / ny;
+                
+                if (flipped_voxels_in_batch[voxel_idx]) continue;
+                flipped_voxels_in_batch[voxel_idx] = true;
+                flips_in_this_batch++;
+                
+                Eigen::Matrix3d C = catalog[mode_idx];
+                apply_flip_soa_3d(x, y, z, m);
+                prev_strain_dir[voxel_idx] = C;
+                
+                // Redraw catalog/barriers
+                if (redraw_directions || redraw_barriers) {
+                    for (int mm = 0; mm < M; ++mm) {
+                        int current_mode_idx = voxel_idx * M + mm;
+                        if (redraw_directions) {
+                            if (use_3d_barriers) {
+                                catalog[current_mode_idx] = stz_mode_glass_3d(gamma0, rng);
+                            } else {
+                                catalog[current_mode_idx] = stz_mode_glass(gamma0, rng);
+                            }
+                        }
+                        if (redraw_barriers) {
+                            Q0[current_mode_idx] = barrier_gen.generate(rng);
+                        }
+                    }
+                } else {
+                    if (use_3d_barriers) {
+                        catalog[mode_idx] = stz_mode_glass_3d(gamma0, rng);
+                    } else {
+                        catalog[mode_idx] = stz_mode_glass(gamma0, rng);
+                    }
+                    Q0[mode_idx] = barrier_gen.generate(rng);
+                }
+                
+                if (fast_patching_enabled) {
+                    double c0 = C(0, 0);
+                    double c1 = -C(2, 2);
+                    double c2 = C(0, 1);
+                    double c3 = C(0, 2);
+                    double c4 = C(1, 2);
+                    
+                    int R = patch_radius;
+                    int side = 2 * R + 1;
+                    int side_z = (nz > 1 ? 2 * R + 1 : 1);
+                    
+                    for (int dx = -R; dx <= R; ++dx) {
+                        for (int dy = -R; dy <= R; ++dy) {
+                            for (int dz = (nz > 1 ? -R : 0); dz <= (nz > 1 ? R : 0); ++dz) {
+                                int px = (x + dx + nx) % nx;
+                                int py = (y + dy + ny) % ny;
+                                int pz = (z + dz + nz) % nz;
+                                
+                                int crop_idx = ((dx + R) * side + (dy + R)) * side_z + (nz > 1 ? (dz + R) : 0);
+                                
+                                Eigen::Matrix3d patch_val = c0 * patch_kernels[0][crop_idx] +
+                                                            c1 * patch_kernels[1][crop_idx] +
+                                                            c2 * patch_kernels[2][crop_idx] +
+                                                            c3 * patch_kernels[3][crop_idx] +
+                                                            c4 * patch_kernels[4][crop_idx];
+                                sig_field[px * (ny * nz) + py * nz + pz] += patch_val;
+                            }
+                        }
+                    }
+                    
+                    Eigen::Matrix3d mean_shift = c0 * patch_missing_mean[0] +
+                                                 c1 * patch_missing_mean[1] +
+                                                 c2 * patch_missing_mean[2] +
+                                                 c3 * patch_missing_mean[3] +
+                                                 c4 * patch_missing_mean[4];
+                    for (int i = 0; i < nx * ny * nz; ++i) {
+                        sig_field[i] += mean_shift;
+                    }
+                }
+            }
+            
+            if (!fast_patching_enabled) {
+                elastic_run();
+            }
+            
+            total_flips += flips_in_this_batch;
+            local_step++;
+            if (local_step > limit) break;
+        }
+        
+        if (fast_patching_enabled && total_flips > 0) {
+            elastic_run();
+        }
+        
+        return {local_step, total_flips};
+    }
+    
+    void init_logs(std::string summary_filename, bool enable_summary_log, bool enable_global_log) {
+        std::filesystem::create_directories(output_dir);
+        std::string summary_path = output_dir + "/" + summary_filename;
+        std::string global_path = output_dir + "/global_log.txt";
+        
+        if (enable_summary_log) {
+            f_summary.open(summary_path);
+            std::string header = "Timestamp              Elapsed(s)   Step     Type            Eps_xx       Sig_xx(GPa)     KMC      Cascade  Flips    SimTime(s)\n";
+            f_summary << header;
+            f_summary << std::string(header.length() - 1, '-') << "\n";
+        }
+        
+        if (enable_global_log) {
+            f_global.open(global_path);
+            f_global << std::left << std::setw(10) << "GlobalStep" << " "
+                     << std::setw(12) << "ElasticStep" << " "
+                     << std::setw(10) << "KMCStep" << " "
+                     << std::setw(15) << "Eps_xx" << " "
+                     << std::setw(15) << "Eps_yy" << " "
+                     << std::setw(15) << "Eps_zz" << " "
+                     << std::setw(15) << "Eps_xy" << " "
+                     << std::setw(15) << "Eps_xz" << " "
+                     << std::setw(15) << "Eps_yz" << " "
+                     << std::setw(15) << "Sig_xx(GPa)" << " "
+                     << std::setw(15) << "Sig_yy(GPa)" << " "
+                     << std::setw(15) << "Sig_zz(GPa)" << " "
+                     << std::setw(15) << "Sig_xy(GPa)" << " "
+                     << std::setw(15) << "Sig_xz(GPa)" << " "
+                     << std::setw(15) << "Sig_yz(GPa)" << " "
+                     << std::setw(14) << "CascadeSteps" << " "
+                     << std::setw(17) << "TotalCascadeFlips" << " "
+                     << "SimTime(s)\n";
+        }
+    }
+    
+    void close_logs() {
+        if (f_summary.is_open()) f_summary.close();
+        if (f_global.is_open()) f_global.close();
+    }
+    
+    void do_logging(
+        int global_step, int elastic_steps_done, int total_kmc_steps,
+        std::string step_type, int cascade_steps, int cascade_flips,
+        std::pair<int, int> component, bool enable_console_log,
+        std::chrono::high_resolution_clock::time_point start_time_total,
+        std::string vtk_interval_str, bool vtk_elastic_only
+    ) {
+        if (step_type == "INIT") {
+            // Only handle VTK export for step 0
+            bool save_vtk = false;
+            std::string vt_name = "";
+            if (vtk_interval_str != "none" && vtk_interval_str != "last") {
+                if (vtk_interval_str == "current") {
+                    vt_name = output_dir + "/step.vtu";
+                    save_vtk = true;
+                } else {
+                    std::stringstream ss;
+                    ss << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << 0 << ".vtu";
+                    vt_name = ss.str();
+                    save_vtk = true;
+                }
+            }
+            if (save_vtk && !vt_name.empty()) {
+                export_to_vtu(vt_name, nx, ny, nz, eps_field, sig_field, E_field, nu_field, pixel, {}, eps_plastic, soft_prop);
+            }
+            return;
+        }
+
+        Eigen::Matrix3d epsM = eps_macro;
+        Eigen::Matrix3d sigM = sig_macro;
+        
+        double elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_time_total).count();
+        double curr_strain_val = epsM(component.first, component.second);
+        double curr_stress_val = sigM(component.first, component.second);
+        
+        std::string now_str = get_current_timestamp();
+        
+        char buf[256];
+        snprintf(
+            buf, sizeof(buf),
+            "%-22s %-12.2f %-8d %-15s %-12.6f %-15.3f %-8d %-8d %-8d %-15.6e\n",
+            now_str.c_str(), elapsed, global_step, step_type.c_str(),
+            curr_strain_val, curr_stress_val / 1e9, total_kmc_steps,
+            cascade_steps, cascade_flips, time
+        );
+        std::string summary_line(buf);
+        
+        if (f_summary.is_open()) {
+            f_summary << summary_line;
+        }
+        if (enable_console_log) {
+            std::cout << summary_line;
+        }
+        
+        if (f_global.is_open()) {
+            char g_buf[1024];
+            snprintf(
+                g_buf, sizeof(g_buf),
+                "%-10d %-12d %-10d %-15.6f %-15.6f %-15.6f %-15.6f %-15.6f %-15.6f %-15.3f %-15.3f %-15.3f %-15.3f %-15.3f %-15.3f %-14d %-17d %-15.6e\n",
+                global_step, elastic_steps_done, total_kmc_steps,
+                epsM(0, 0), epsM(1, 1), epsM(2, 2), epsM(0, 1), epsM(0, 2), epsM(1, 2),
+                sigM(0, 0) / 1e9, sigM(1, 1) / 1e9, sigM(2, 2) / 1e9, sigM(0, 1) / 1e9, sigM(0, 2) / 1e9, sigM(1, 2) / 1e9,
+                cascade_steps, cascade_flips, time
+            );
+            f_global << g_buf;
+        }
+        
+        bool save_vtk = false;
+        std::string vt_name = "";
+        if (vtk_interval_str != "none") {
+            if (vtk_interval_str == "current") {
+                vt_name = output_dir + "/step.vtu";
+                save_vtk = true;
+            } else {
+                try {
+                    int interval = std::stoi(vtk_interval_str);
+                    if (interval > 0) {
+                        bool count_ok = false;
+                        if (vtk_elastic_only) {
+                            if ((step_type == "INIT" || step_type == "ELASTIC") && elastic_steps_done % interval == 0) {
+                                count_ok = true;
+                            }
+                        } else {
+                            if (global_step % interval == 0) {
+                                count_ok = true;
+                            }
+                        }
+                        if (count_ok) {
+                            std::stringstream ss;
+                            ss << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << global_step << ".vtu";
+                            vt_name = ss.str();
+                            save_vtk = true;
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+        
+        if (save_vtk && !vt_name.empty()) {
+            export_to_vtu(vt_name, nx, ny, nz, eps_field, sig_field, E_field, nu_field, pixel, {}, eps_plastic, soft_prop);
+        }
+    }
+    
+    void run_simulation(
+        int n_global_steps, double step_size, std::pair<int, int> component,
+        const std::map<std::pair<int, int>, double>& stress_targets, double mixed_tol = 1e-4, int mixed_max_iter = 50,
+        std::string checkpoint_interval = "none", std::string checkpoint_path = "checkpoint",
+        std::string vtk_interval = "none", bool vtk_elastic_only = true,
+        bool track_cascades = false, bool enable_console_log = true,
+        std::string summary_filename = "summary_log.txt", bool enable_summary_log = true,
+        bool enable_global_log = true, double max_kmc_steps_pct = 0.3
+    ) {
+        init_logs(summary_filename, enable_summary_log, enable_global_log);
+        auto start_time_total = std::chrono::high_resolution_clock::now();
+        
+        int elastic_steps_done = 0;
+        int total_kmc_steps = 0;
+        int cascade_event_count = 0;
+        int step = 1;
+        int sequential_kmc_steps = 0;
+        int max_sequential_kmc = static_cast<int>(max_kmc_steps_pct * nx * ny * nz);
+        
+        elastic_run();
+        
+        if (enable_console_log) {
+            std::cout << "Timestamp              Elapsed(s)   Step     Type            Eps_xx       Sig_xx(GPa)     KMC      Cascade  Flips    SimTime(s)\n";
+            std::cout << "-----------------------------------------------------------------------------------------------------------------------------\n";
+        }
+        
+        do_logging(
+            0, elastic_steps_done, total_kmc_steps, "INIT", 0, 0,
+            component, enable_console_log, start_time_total, vtk_interval, vtk_elastic_only
+        );
+        
+        Eigen::Matrix3d strain_unit = Eigen::Matrix3d::Zero();
+        strain_unit(component.first, component.second) = 1.0;
+        
+        double dt_step = std::abs(step_size) / strain_rate;
+        double remaining_time = 0.0;
+        
+        std::uniform_real_distribution<double> uniform_dist(0.0, 1.0);
+        
+        while (elastic_steps_done < n_global_steps) {
+            remaining_time += dt_step;
+            while (remaining_time > 0.0) {
+                update_barriers();
+                
+                if (instability_mode == "cascade") {
+                    std::vector<int> unstable = find_unstable_indices();
+                    if (!unstable.empty()) {
+                        auto [c_steps, c_flips] = run_cascade(step, component);
+                        if (c_flips > 0) {
+                            cascade_event_count++;
+                            do_logging(
+                                step, elastic_steps_done, total_kmc_steps, "CASCADE",
+                                c_steps, c_flips, component, enable_console_log, start_time_total,
+                                vtk_interval, vtk_elastic_only
+                            );
+                            step++;
+                        }
+                        continue;
+                    }
+                }
+                
+                double eff_volume = scale_rate_by_volume ? volume : 1.0;
+                double kB = 8.617e-5;
+                double beta = (temperature > 0.0) ? (1.0 / (kB * temperature)) : std::numeric_limits<double>::infinity();
+                
+                std::vector<double> rates;
+                std::vector<int> indices;
+                double total_rate = 0.0;
+                
+                int size = Q.size();
+                for (int i = 0; i < size; ++i) {
+                    double q = Q[i];
+                    if (instability_mode == "kmc" || q > 0.0) {
+                        double r = 0.0;
+                        if (q <= 0.0) {
+                            r = eff_volume * nu0;
+                        } else {
+                            r = eff_volume * nu0 * std::exp(-q * beta);
+                        }
+                        rates.push_back(r);
+                        total_rate += r;
+                        indices.push_back(i);
+                    }
+                }
+                
+                if (total_rate > 0.0) {
+                    double r_val = uniform_dist(rng);
+                    double t_wait = -std::log(r_val) / total_rate;
+                    if (t_wait < remaining_time) {
+                        time += t_wait;
+                        eps_macro += strain_unit * (strain_rate * t_wait);
+                        remaining_time -= t_wait;
+                        
+                        double target_sum = uniform_dist(rng) * total_rate;
+                        double current_sum = 0.0;
+                        int selected_idx = rates.size() - 1;
+                        for (size_t i = 0; i < rates.size(); ++i) {
+                            current_sum += rates[i];
+                            if (current_sum >= target_sum) {
+                                selected_idx = i;
+                                break;
+                            }
+                        }
+                        
+                        int idx_flat = indices[selected_idx];
+                        int m = idx_flat % M;
+                        int voxel_idx = idx_flat / M;
+                        
+                        int temp = voxel_idx;
+                        int z = temp % nz;
+                        temp = temp / nz;
+                        int y = temp % ny;
+                        int x = temp / ny;
+                        
+                        bool is_instab = (Q[idx_flat] <= stability_threshold);
+                        Eigen::Matrix3d C = catalog[idx_flat];
+                        apply_flip_soa_3d(x, y, z, m);
+                        prev_strain_dir[voxel_idx] = C;
+                        
+                        if (redraw_directions || redraw_barriers) {
+                            for (int mm = 0; mm < M; ++mm) {
+                                int current_mode_idx = voxel_idx * M + mm;
+                                if (redraw_directions) {
+                                    if (use_3d_barriers) {
+                                        catalog[current_mode_idx] = stz_mode_glass_3d(gamma0, rng);
+                                    } else {
+                                        catalog[current_mode_idx] = stz_mode_glass(gamma0, rng);
+                                    }
+                                }
+                                if (redraw_barriers) {
+                                    Q0[current_mode_idx] = barrier_gen.generate(rng);
+                                }
+                            }
+                        } else {
+                            if (use_3d_barriers) {
+                                catalog[idx_flat] = stz_mode_glass_3d(gamma0, rng);
+                            } else {
+                                catalog[idx_flat] = stz_mode_glass(gamma0, rng);
+                            }
+                            Q0[idx_flat] = barrier_gen.generate(rng);
+                        }
+                        
+                        if (fast_patching_enabled) {
+                            if (!sigma_macro_unit_initialized) {
+                                std::vector<Eigen::Matrix3d> dummy_eps;
+                                std::vector<Eigen::Matrix3d> dummy_sig;
+                                Eigen::Matrix3d dummy_eps_macro = strain_unit;
+                                Eigen::Matrix3d dummy_sig_macro = Eigen::Matrix3d::Zero();
+                                spectral_solver_3d(
+                                    nx, ny, nz, E_field, nu_field, dummy_eps_macro, Gamma,
+                                    dummy_eps, dummy_sig, dummy_eps_macro, dummy_sig_macro, 200, 1e-6, false
+                                );
+                                sigma_macro_unit = dummy_sig_macro;
+                                sigma_macro_unit_initialized = true;
+                            }
+                            
+                            if (t_wait > 0.0) {
+                                for (int i = 0; i < nx * ny * nz; ++i) {
+                                    sig_field[i] += sigma_macro_unit * (strain_rate * t_wait);
+                                }
+                            }
+                            
+                            double c0 = C(0, 0);
+                            double c1 = -C(2, 2);
+                            double c2 = C(0, 1);
+                            double c3 = C(0, 2);
+                            double c4 = C(1, 2);
+                            
+                            int R = patch_radius;
+                            int side = 2 * R + 1;
+                            int side_z = (nz > 1 ? 2 * R + 1 : 1);
+                            
+                            for (int dx = -R; dx <= R; ++dx) {
+                                for (int dy = -R; dy <= R; ++dy) {
+                                    for (int dz = (nz > 1 ? -R : 0); dz <= (nz > 1 ? R : 0); ++dz) {
+                                        int px = (x + dx + nx) % nx;
+                                        int py = (y + dy + ny) % ny;
+                                        int pz = (z + dz + nz) % nz;
+                                        
+                                        int crop_idx = ((dx + R) * side + (dy + R)) * side_z + (nz > 1 ? (dz + R) : 0);
+                                        
+                                        Eigen::Matrix3d patch_val = c0 * patch_kernels[0][crop_idx] +
+                                                                    c1 * patch_kernels[1][crop_idx] +
+                                                                    c2 * patch_kernels[2][crop_idx] +
+                                                                    c3 * patch_kernels[3][crop_idx] +
+                                                                    c4 * patch_kernels[4][crop_idx];
+                                        sig_field[px * (ny * nz) + py * nz + pz] += patch_val;
+                                    }
+                                }
+                            }
+                            
+                            Eigen::Matrix3d mean_shift = c0 * patch_missing_mean[0] +
+                                                         c1 * patch_missing_mean[1] +
+                                                         c2 * patch_missing_mean[2] +
+                                                         c3 * patch_missing_mean[3] +
+                                                         c4 * patch_missing_mean[4];
+                            for (int i = 0; i < nx * ny * nz; ++i) {
+                                sig_field[i] += mean_shift;
+                            }
+                            
+                            flips_since_sync++;
+                            if (flips_since_sync >= sync_interval) {
+                                elastic_run();
+                                flips_since_sync = 0;
+                            }
+                        } else {
+                            elastic_run();
+                        }
+                        
+                        std::string log_type = is_instab ? "KMC_INSTAB" : "KMC";
+                        if (is_instab) {
+                            sequential_kmc_steps++;
+                        } else {
+                            sequential_kmc_steps = 0;
+                        }
+                        
+                        if (sequential_kmc_steps > max_sequential_kmc) {
+                            std::cout << "\n[TERMINATE] KMC instability sequence limit reached! " << sequential_kmc_steps << " steps." << std::endl;
+                            close_logs();
+                            return;
+                        }
+                        
+                        do_logging(
+                            step, elastic_steps_done, total_kmc_steps, log_type,
+                            0, 1, component, enable_console_log, start_time_total,
+                            vtk_interval, vtk_elastic_only
+                        );
+                        total_kmc_steps++;
+                        step++;
+                        continue;
+                    }
+                }
+                
+                if (fast_patching_enabled) {
+                    if (sigma_macro_unit_initialized) {
+                        for (int i = 0; i < nx * ny * nz; ++i) {
+                            sig_field[i] += sigma_macro_unit * (strain_rate * remaining_time);
+                        }
+                    }
+                }
+                
+                eps_macro += strain_unit * (strain_rate * remaining_time);
+                time += remaining_time;
+                remaining_time = 0.0;
+            }
+            
+            double E_sum = 0.0;
+            double nu_sum = 0.0;
+            for (double val : E_field) E_sum += val;
+            for (double val : nu_field) nu_sum += val;
+            double E_avg = E_sum / E_field.size();
+            double nu_avg = nu_sum / nu_field.size();
+            
+            for (int it = 0; it < mixed_max_iter; ++it) {
+                elastic_run();
+                Eigen::Matrix3d stress_err = Eigen::Matrix3d::Zero();
+                double err_max = 0.0;
+                
+                for (const auto& target : stress_targets) {
+                    int mi = target.first.first;
+                    int mj = target.first.second;
+                    double err = target.second - sig_macro(mi, mj);
+                    stress_err(mi, mj) = err;
+                    err_max = std::max(err_max, std::abs(err));
+                }
+                
+                if (err_max < mixed_tol) {
+                    break;
+                }
+                
+                double tr_sig = stress_err.trace();
+                Eigen::Matrix3d d_eps = (stress_err - nu_avg * tr_sig * Eigen::Matrix3d::Identity()) / E_avg;
+                for (const auto& target : stress_targets) {
+                    int mi = target.first.first;
+                    int mj = target.first.second;
+                    eps_macro(mi, mj) += d_eps(mi, mj);
+                }
+            }
+            
+            elastic_steps_done++;
+            do_logging(
+                step, elastic_steps_done, total_kmc_steps, "ELASTIC",
+                0, 0, component, enable_console_log, start_time_total,
+                vtk_interval, vtk_elastic_only
+            );
+            step++;
+        }
+        
+        // Final VTK output logic matching Python
+        if (vtk_interval != "none") {
+            bool export_final = false;
+            if (vtk_interval == "last") {
+                export_final = true;
+            } else {
+                try {
+                    int interval = std::stoi(vtk_interval);
+                    if (interval > 0 && (step - 1) % interval != 0) {
+                        export_final = true;
+                    }
+                } catch (...) {}
+            }
+            if (export_final) {
+                std::stringstream ss_vt;
+                ss_vt << output_dir << "/vtk_step_" << std::setfill('0') << std::setw(6) << (step - 1) << "_final.vtu";
+                export_to_vtu(ss_vt.str(), nx, ny, nz, eps_field, sig_field, E_field, nu_field, pixel, {}, eps_plastic, soft_prop);
+            }
+        }
+
         double total_duration = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_time_total).count();
         int h = static_cast<int>(total_duration / 3600.0);
         int m = static_cast<int>((total_duration - h * 3600.0) / 60.0);
