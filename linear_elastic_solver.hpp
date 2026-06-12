@@ -48,12 +48,20 @@ inline std::pair<double, double> compute_lame_2d(double E, double nu, const std:
 inline std::vector<Eigen::Matrix2d> stress_from_strain_2d(
     const std::vector<Eigen::Matrix2d>& eps,
     const std::vector<double>& lam,
-    const std::vector<double>& mu) 
+    const std::vector<double>& mu,
+    const std::vector<Eigen::Matrix2d>& eps_plastic = {}) 
 {
     int N = eps.size();
     std::vector<Eigen::Matrix2d> sig(N);
-    for (int i = 0; i < N; ++i) {
-        sig[i] = 2.0 * mu[i] * eps[i] + lam[i] * eps[i].trace() * Eigen::Matrix2d::Identity();
+    if (eps_plastic.empty()) {
+        for (int i = 0; i < N; ++i) {
+            sig[i] = 2.0 * mu[i] * eps[i] + lam[i] * eps[i].trace() * Eigen::Matrix2d::Identity();
+        }
+    } else {
+        for (int i = 0; i < N; ++i) {
+            Eigen::Matrix2d eps_eff = eps[i] - eps_plastic[i];
+            sig[i] = 2.0 * mu[i] * eps_eff + lam[i] * eps_eff.trace() * Eigen::Matrix2d::Identity();
+        }
     }
     return sig;
 }
@@ -148,7 +156,8 @@ inline void spectral_solver_2d(
     Eigen::Matrix2d& sig_macro,
     int max_iter = 200,
     double tol = 1e-6,
-    bool verbose = false) 
+    bool verbose = false,
+    const std::vector<Eigen::Matrix2d>& eps_plastic = {}) 
 {
     int N = nx * ny;
     double E_avg = 0.0, nu_avg = 0.0;
@@ -193,7 +202,7 @@ inline void spectral_solver_2d(
     // Lippmann-Schwinger loop
     for (int it = 0; it < max_iter; ++it) {
         // 1. Stress calculation: sig = C : eps
-        std::vector<Eigen::Matrix2d> sig = stress_from_strain_2d(eps, lam, mu);
+        std::vector<Eigen::Matrix2d> sig = stress_from_strain_2d(eps, lam, mu, eps_plastic);
 
         // 2. Reference stress: sig0 = C0 : eps
         // Since C0 is homogeneous (lam0, mu0), compute polarization stress: tau = sig - sig0
@@ -288,7 +297,7 @@ inline void spectral_solver_2d(
     }
 
     // Compute final stresses and macros
-    sig_out = stress_from_strain_2d(eps, lam, mu);
+    sig_out = stress_from_strain_2d(eps, lam, mu, eps_plastic);
     eps_macro = Eigen::Matrix2d::Zero();
     sig_macro = Eigen::Matrix2d::Zero();
     for (int i = 0; i < N; ++i) {
