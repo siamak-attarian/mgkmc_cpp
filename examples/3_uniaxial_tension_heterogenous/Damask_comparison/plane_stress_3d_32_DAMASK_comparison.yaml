@@ -1,0 +1,39 @@
+seed: 1
+simulation_type: "linear_elastic"
+
+system:
+  dimensionality: "3d"
+  nx: 32
+  ny: 32
+  nz: 1
+  pixel: 0.5
+
+material:
+  E:
+    mode: "file"
+    parameters:
+      path: "d:\\GoogleDrive\\2-MGKMC\\mgkmc_cpp\\E_heterogeneous_32x32x1.npy"
+      
+  nu:
+    mode: "constant"
+    value: 0.3
+
+loading:
+  eps_target: 0.05
+  step_size: 1e-4
+
+boundary_conditions:
+  driving_component: "xx"
+  mixed_targets:
+    yy: 0.0
+    zz: 0.0
+  mixed_tol: 1.0
+
+output:
+  directory: "output_plane_stress_3d_32_DAMASK_comparison"
+  duplicate_directory_action: "delete"
+  checkpoint_interval: "none"
+  vtk_interval: "100"
+  enable_summary_log: true
+  enable_global_log: true
+  enable_console: false

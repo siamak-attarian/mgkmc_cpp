@@ -1,0 +1,51 @@
+# Simulation Configuration for MGKMC
+# Units: Stresses in GPa, Strains are dimensionless, Temperature in K
+# Energy Barriers in eV, Voxel Size (Pixel) in nm
+
+# RNG Settings
+seed: 42
+
+# Main Simulation Mode
+# Options: "kmc" (default) or "linear_elastic"
+simulation_type: "kmc"
+
+# System Geometry
+system:
+  dimensionality: "3d"
+  plane_mode: "plane_strain" # Options: "plane_strain" or "plane_stress" (ignored if not 2d)
+  nx: 32
+  ny: 32
+  nz: 32
+  pixel: 0.7       # Voxel size (nm)
+
+# Material Properties
+material:
+  E:
+    mode: "constant"
+    value: 70     # Elastic constant (GPa)
+  nu:
+    mode: "constant"
+    value: 0.3     # Poisson's ratio
+
+# Loading
+loading:
+  eps_target: 0.08
+  step_size: 1e-4
+
+# Boundary Conditions
+boundary_conditions:
+  driving_component: "xx"         # Driven strain component
+  mixed_targets:                  # Stress targets for non-driven components (GPa)
+    yy: 0.0                       # yy stress free
+  mixed_tol: 1.0                  # Tolerance for stress convergence (MPa)
+
+# Output & Logging
+output:
+  directory: "simulation_results"
+  duplicate_directory_action: "delete"
+  enable_plotting: true
+  enable_console: true
+  summary_filename: "summary_log.txt"
+  enable_summary_log: true
+  enable_global_log: true
+  enable_config_backup: true

@@ -1,0 +1,37 @@
+seed: 1
+simulation_type: "linear_elastic"
+
+system:
+  dimensionality: "2d"
+  plane_mode: "plane_stress"
+  nx: 32
+  ny: 32
+  pixel: 0.5
+
+material:
+  E:
+    mode: "file"
+    parameters:
+      path: "d:\\GoogleDrive\\2-MGKMC\\mgkmc_cpp\\E_heterogeneous_32x32.npy"
+  nu:
+    mode: "constant"
+    value: 0.3
+
+loading:
+  eps_target: 0.05
+  step_size: 1e-4
+
+boundary_conditions:
+  driving_component: "xx"
+  mixed_targets:
+    yy: 0.0
+  mixed_tol: 1.0
+
+output:
+  directory: "simulation_results"
+  duplicate_directory_action: "delete"
+  enable_console: true
+  enable_summary_log: true
+  enable_global_log: true
+  summary_filename: "summary_log.txt"
+  vtk_interval: 200
