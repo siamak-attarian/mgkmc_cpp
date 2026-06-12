@@ -168,8 +168,6 @@ inline std::vector<Eigen::Vector3d> reconstruct_displacement_element_centered(
 }
 
 // -------------------------------------------------------------
-// 2. Export 3D and 2D arrays to XML VTU
-// -------------------------------------------------------------
 inline void export_to_vtu(
     const std::string& filename,
     int nx, int ny, int nz,
@@ -177,7 +175,10 @@ inline void export_to_vtu(
     const std::vector<Eigen::Matrix3d>& sig,
     const std::vector<double>& E_field,
     const std::vector<double>& nu_field,
-    double pixel
+    double pixel,
+    const std::vector<double>& Tlocal = {},
+    const std::vector<Eigen::Matrix3d>& eps_plastic = {},
+    const std::vector<Eigen::Vector2d>& soft_prop = {}
 ) {
     std::ofstream fs(filename);
     if (!fs.is_open()) {
@@ -268,6 +269,46 @@ inline void export_to_vtu(
     print_cell_scalar("sig_yz", sig_yz);
     print_cell_scalar("sig_vm", sig_vm);
     
+    if (!Tlocal.empty()) {
+        print_cell_scalar("temperature", Tlocal);
+    }
+    
+    if (!eps_plastic.empty()) {
+        std::vector<double> ep_xx(num_cells), ep_yy(num_cells), ep_zz(num_cells);
+        std::vector<double> ep_xy(num_cells), ep_xz(num_cells), ep_yz(num_cells);
+        std::vector<double> ep_vm(num_cells);
+        
+        for (int idx = 0; idx < num_cells; ++idx) {
+            ep_xx[idx] = eps_plastic[idx](0, 0);
+            ep_yy[idx] = eps_plastic[idx](1, 1);
+            ep_zz[idx] = eps_plastic[idx](2, 2);
+            ep_xy[idx] = eps_plastic[idx](0, 1);
+            ep_xz[idx] = eps_plastic[idx](0, 2);
+            ep_yz[idx] = eps_plastic[idx](1, 2);
+            
+            double tr_ep = eps_plastic[idx].trace();
+            Eigen::Matrix3d ep_dev = eps_plastic[idx] - Eigen::Matrix3d::Identity() * (tr_ep / 3.0);
+            ep_vm[idx] = std::sqrt((2.0 / 3.0) * ep_dev.squaredNorm());
+        }
+        print_cell_scalar("eps_plastic_xx", ep_xx);
+        print_cell_scalar("eps_plastic_yy", ep_yy);
+        print_cell_scalar("eps_plastic_zz", ep_zz);
+        print_cell_scalar("eps_plastic_xy", ep_xy);
+        print_cell_scalar("eps_plastic_xz", ep_xz);
+        print_cell_scalar("eps_plastic_yz", ep_yz);
+        print_cell_scalar("eps_plastic_vm", ep_vm);
+    }
+    
+    if (!soft_prop.empty()) {
+        std::vector<double> g_p(num_cells), g_t(num_cells);
+        for (int idx = 0; idx < num_cells; ++idx) {
+            g_p[idx] = soft_prop[idx](0);
+            g_t[idx] = soft_prop[idx](1);
+        }
+        print_cell_scalar("g_p", g_p);
+        print_cell_scalar("g_t", g_t);
+    }
+    
     fs << "      </CellData>\n";
     
     // 3. Points
@@ -331,19 +372,26 @@ inline void export_to_vtu_2d(
     const std::vector<Eigen::Matrix2d>& sig_2d,
     const std::vector<double>& E_field,
     const std::vector<double>& nu_field,
-    double pixel
+    double pixel,
+    const std::vector<double>& Tlocal = {},
+    const std::vector<Eigen::Matrix2d>& eps_plastic_2d = {},
+    const std::vector<Eigen::Vector2d>& soft_prop = {}
 ) {
     int N = nx * ny;
-    std::vector<Eigen::Matrix3d> eps_3d(N);
-    std::vector<Eigen::Matrix3d> sig_3d(N);
-    for (int i = 0; i < N; ++i) {
-        eps_3d[i] = Eigen::Matrix3d::Zero();
-        eps_3d[i].block<2,2>(0,0) = eps_2d[i];
-        
-        sig_3d[i] = Eigen::Matrix3d::Zero();
-        sig_3d[i].block<2,2>(0,0) = sig_2d[i];
+    std::vector<Eigen::Matrix3d> eps_3d(N, Eigen::Matrix3d::Zero());
+    std::vector<Eigen::Matrix3d> sig_3d(N, Eigen::Matrix3d::Zero());
+    std::vector<Eigen::Matrix3d> eps_p_3d;
+    if (!eps_plastic_2d.empty()) {
+        eps_p_3d.assign(N, Eigen::Matrix3d::Zero());
     }
-    export_to_vtu(filename, nx, ny, 1, eps_3d, sig_3d, E_field, nu_field, pixel);
+    for (int i = 0; i < N; ++i) {
+        eps_3d[i].block<2,2>(0,0) = eps_2d[i];
+        sig_3d[i].block<2,2>(0,0) = sig_2d[i];
+        if (!eps_plastic_2d.empty()) {
+            eps_p_3d[i].block<2,2>(0,0) = eps_plastic_2d[i];
+        }
+    }
+    export_to_vtu(filename, nx, ny, 1, eps_3d, sig_3d, E_field, nu_field, pixel, Tlocal, eps_p_3d, soft_prop);
 }
 
 #endif // VTU_WRITER_HPP

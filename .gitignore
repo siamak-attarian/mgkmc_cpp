@@ -15,3 +15,11 @@ output*/
 .idea/
 *.suo
 *.user
+
+# Custom run results
+cpp_results/
+cpp_vtk_results/
+python_results/
+cpp_test_config.yaml
+cpp_vtk_test_config.yaml
+python_test_config.yaml

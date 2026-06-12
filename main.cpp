@@ -12,6 +12,7 @@
 #include "linear_elastic_solver.hpp"
 #include "material_generator.hpp"
 #include "vtu_writer.hpp"
+#include "kmc_solver.hpp"
 
 // Utility function to format current local time
 std::string get_current_timestamp() {
@@ -273,6 +274,99 @@ int main(int argc, char* argv[]) {
     
     // Setup boundary conditions
     std::string driving_raw = config.getString("boundary_conditions.driving_component", "xx");
+    
+    if (sim_type == "kmc") {
+        if (is_3d) {
+            std::cerr << "Error: 3D Kinetic Monte Carlo is not implemented in C++." << std::endl;
+            return 1;
+        }
+        
+        // 1. Initialize KMC simulator parameters
+        double mixed_tol_mpa = config.getDouble("boundary_conditions.mixed_tol", 1.0);
+        BarrierGenerator bg;
+        bg.type = config.getString("barriers.type", "gaussian");
+        bg.mean = config.getDouble("barriers.kwargs.mean", 2.0);
+        bg.std_val = config.getDouble("barriers.kwargs.std", 0.6);
+        bg.min_cutoff = config.getDouble("barriers.kwargs.min_cutoff", 0.1);
+        bg.max_cutoff = config.getDouble("barriers.kwargs.max_cutoff", -1.0);
+        bg.loc = config.getDouble("barriers.kwargs.loc", 1.0);
+        bg.scale = config.getDouble("barriers.kwargs.scale", 0.5);
+        bg.epsilon = config.getDouble("barriers.kwargs.epsilon", 0.1);
+        bg.ratio = config.getDouble("barriers.kwargs.ratio", 0.8);
+        
+        std::string soft_scheme = config.getString("physics.softening_scheme", "isotropic");
+        double soft_cap = config.getBool("physics.enable_softening", true) ? config.getDouble("physics.softening_cap", 2.0) : 0.0;
+        double jp_val = config.getBool("physics.enable_softening", true) ? config.getDouble("physics.jp", 10.0) : 0.0;
+        double jt_val = config.getBool("physics.enable_softening", true) ? config.getDouble("physics.jt", 30.0) : 0.0;
+        double neigh_frac = config.getBool("physics.enable_softening", true) ? config.getDouble("physics.neighbor_softening_fraction", 0.0) : 0.0;
+        double q_act = config.getDouble("physics.q_act_temp", 0.37);
+        
+        bool redraw_b = config.getBool("physics.redraw_barriers", true);
+        bool redraw_d = config.getBool("physics.redraw_directions", true);
+        double stab_thresh = config.getDouble("physics.stability_threshold", 0.0);
+        
+        std::string instab_mode = config.getString("dynamics.instability_mode", "cascade");
+        std::string casc_timing = config.getString("dynamics.cascade_timing", "none");
+        bool scale_vol = config.getBool("dynamics.scale_rate_by_volume", true);
+        double nu0_val = config.getDouble("dynamics.nu0", 1e13);
+        double strain_rate_val = config.getDouble("dynamics.physical_strain_rate", 1.0);
+        double temp_val = config.getDouble("dynamics.temperature", 0.0);
+        
+        bool fp_enabled = config.getBool("dynamics.fast_patching.enabled", false);
+        int fp_radius = config.getInt("dynamics.fast_patching.patch_radius", 5);
+        int fp_sync = config.getInt("dynamics.fast_patching.sync_interval", 100);
+        
+        int M_val = config.getInt("system.M", 20);
+        double gamma0_val = config.getDouble("system.gamma0", 0.14);
+        int seed_val = config.getInt("seed", 42);
+        
+        // 2. Parse driving component
+        int drv_i = 0, drv_j = 0;
+        if (driving_raw == "xx") { drv_i = 0; drv_j = 0; }
+        else if (driving_raw == "yy") { drv_i = 1; drv_j = 1; }
+        else if (driving_raw == "xy") { drv_i = 0; drv_j = 1; }
+        else if (driving_raw == "yx") { drv_i = 1; drv_j = 0; }
+        
+        std::map<std::string, double> mixed_raw = config.getDict("boundary_conditions.mixed_targets");
+        std::map<std::pair<int, int>, double> stress_targets;
+        for (const auto& pair : mixed_raw) {
+            int mi = 0, mj = 0;
+            if (pair.first == "xx") { mi = 0; mj = 0; }
+            else if (pair.first == "yy") { mi = 1; mj = 1; }
+            else if (pair.first == "xy") { mi = 0; mj = 1; }
+            else if (pair.first == "yx") { mi = 1; mj = 0; }
+            else continue;
+            
+            double s_val = pair.second;
+            if (s_val < 1e6) {
+                s_val *= 1e9;
+            }
+            stress_targets[{mi, mj}] = s_val;
+        }
+        
+        // 3. Create KmcSimulation2D
+        KmcSimulation2D sim(
+            nx, ny, M_val, gamma0_val, E_field, nu_field, pixel,
+            bg, soft_scheme, soft_cap, jp_val, jt_val, neigh_frac,
+            q_act, out_dir, temp_val, strain_rate_val, stab_thresh, nu0_val,
+            plane_mode, fp_enabled, fp_radius, fp_sync,
+            instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, seed_val
+        );
+        
+        // 4. Run simulation
+        double max_kmc_steps_pct = config.getDouble("detection.max_kmc_steps_pct", 0.3);
+        
+        sim.run_simulation(
+            n_steps, step_size, {drv_i, drv_j}, stress_targets,
+            mixed_tol_mpa * 1e6, 50, checkpoint_interval, "checkpoint",
+            vtk_interval_str, config.getBool("output.vtk_elastic_only", true),
+            config.getBool("output.track_cascades", false),
+            enable_console, summary_filename, enable_summary, enable_global,
+            max_kmc_steps_pct
+        );
+        
+        return 0;
+    }
     
     std::cout << "\n--- Starting execution ---" << std::endl;
     std::cout << "Grid: " << nx << "x" << ny << (is_3d ? "x" + std::to_string(nz) : "") << " (" << (is_3d ? "3D" : "2D") << ")" << std::endl;
