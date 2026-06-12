@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<VTKFile type="ImageData" version="0.1" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
+  <ImageData WholeExtent="0 32 0 32 0 1" Origin="0 0 0" Spacing="0.5 0.5 0.5" Direction="1 0 0 0 1 0 0 0 1">
+    <FieldData>
+      <Array type="String" Name="comments" NumberOfTuples="2" format="binary">
+        AQAAAACAAABpAAAAVwAAAA==eF5LScxNLM7WC0otLs0p0UutKMgvKokPC/FWKDPWM9AzUtAwMjAy1TU00jWwUDCwtDI2sTI01TUwMzDQZHBx9HUM9o5PL8pMwaHayNTK1AiqGgAjtxpA
+      </Array>
+    </FieldData>
+  <Piece Extent="0 32 0 32 0 1">
+    <PointData>
+      <DataArray type="Float32" Name="u" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="0">
+        AQAAAACAAAAYZgAAMAAAAA==eF7twTEBAAAAwqD1T20JT6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeBpmGAAB
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            0
+          </Value>
+          <Value index="1">
+            0
+          </Value>
+        </InformationKey>
+      </DataArray>
+    </PointData>
+    <CellData>
+      <DataArray type="Float32" Name="phase/mechanical/F / 1" NumberOfComponents="9" format="binary" RangeMin="1.7320508075688772" RangeMax="1.7320508075688772">
+        AgAAAACAAAAAEAAAgAAAADIAAAA=eF7tyrEJAAAIBLHfzNUc3VpwAsl1B0m6srqeYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYX6bARFc9f94Xu3KsQkAMAwDQW3m1TJ6SOEi4AUM953EJd2pfL09fQzDMAzDMAzDMAzDbDMXi2L+bA==
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            1.7320508076
+          </Value>
+          <Value index="1">
+            1.7320508076
+          </Value>
+        </InformationKey>
+      </DataArray>
+      <DataArray type="Float32" Name="phase/mechanical/F_p / 1" NumberOfComponents="9" format="binary" RangeMin="1.7320508075688772" RangeMax="1.7320508075688772">
+        AgAAAACAAAAAEAAAgAAAADIAAAA=eF7tyrEJAAAIBLHfzNUc3VpwAsl1B0m6srqeYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYRiGYX6bARFc9f94Xu3KsQkAMAwDQW3m1TJ6SOEi4AUM953EJd2pfL09fQzDMAzDMAzDMAzDbDMXi2L+bA==
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            1.7320508076
+          </Value>
+          <Value index="1">
+            1.7320508076
+          </Value>
+        </InformationKey>
+      </DataArray>
+      <DataArray type="Float32" Name="phase/mechanical/P / Pa" NumberOfComponents="9" format="binary" RangeMin="0" RangeMax="0">
+        AgAAAACAAAAAEAAANAAAABoAAAA=eF7twQEBAAAAgJD+r+4ICgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYgAAAAXhe7cEBDQAAAMKg909tDwcUAAAA8G4QAAAB
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            0
+          </Value>
+          <Value index="1">
+            0
+          </Value>
+        </InformationKey>
+      </DataArray>
+      <DataArray type="Float32" Name="phase/mechanical/epsilon_V^0.0(F) / 1" NumberOfComponents="9" format="binary" RangeMin="0" RangeMax="0">
+        AgAAAACAAAAAEAAANAAAABoAAAA=eF7twQEBAAAAgJD+r+4ICgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYgAAAAXhe7cEBDQAAAMKg909tDwcUAAAA8G4QAAAB
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            0
+          </Value>
+          <Value index="1">
+            0
+          </Value>
+        </InformationKey>
+      </DataArray>
+      <DataArray type="Float32" Name="phase/mechanical/sigma / Pa" NumberOfComponents="9" format="binary" RangeMin="0" RangeMax="0">
+        AgAAAACAAAAAEAAANAAAABoAAAA=eF7twQEBAAAAgJD+r+4ICgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYgAAAAXhe7cEBDQAAAMKg909tDwcUAAAA8G4QAAAB
+        <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+          <Value index="0">
+            0
+          </Value>
+          <Value index="1">
+            0
+          </Value>
+        </InformationKey>
+      </DataArray>
+      <DataArray type="Float32" Name="phase/mechanical/sigma_vM / Pa" format="binary" RangeMin="0" RangeMax="0">
+        AQAAAACAAAAAEAAAGgAAAA==eF7twQENAAAAwqD3T20PBxQAAADwbhAAAAE=
+      </DataArray>
+    </CellData>
+  </Piece>
+  </ImageData>
+</VTKFile>

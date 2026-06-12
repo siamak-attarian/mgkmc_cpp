@@ -1,0 +1,17 @@
+# Binaries and build outputs
+main.exe
+main
+*.o
+*.obj
+*.exe
+
+# Simulation results and generated VTK data
+simulation_results/
+output*/
+*.vtu
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.suo
+*.user
