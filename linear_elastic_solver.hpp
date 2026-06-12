@@ -322,12 +322,20 @@ inline std::pair<double, double> compute_lame_3d(double E, double nu) {
 inline std::vector<Eigen::Matrix3d> stress_from_strain_3d(
     const std::vector<Eigen::Matrix3d>& eps,
     const std::vector<double>& lam,
-    const std::vector<double>& mu) 
+    const std::vector<double>& mu,
+    const std::vector<Eigen::Matrix3d>& eps_plastic = {}) 
 {
     int N = eps.size();
     std::vector<Eigen::Matrix3d> sig(N);
-    for (int i = 0; i < N; ++i) {
-        sig[i] = 2.0 * mu[i] * eps[i] + lam[i] * eps[i].trace() * Eigen::Matrix3d::Identity();
+    if (eps_plastic.size() == (size_t)N) {
+        for (int i = 0; i < N; ++i) {
+            Eigen::Matrix3d e_elastic = eps[i] - eps_plastic[i];
+            sig[i] = 2.0 * mu[i] * e_elastic + lam[i] * e_elastic.trace() * Eigen::Matrix3d::Identity();
+        }
+    } else {
+        for (int i = 0; i < N; ++i) {
+            sig[i] = 2.0 * mu[i] * eps[i] + lam[i] * eps[i].trace() * Eigen::Matrix3d::Identity();
+        }
     }
     return sig;
 }
@@ -432,7 +440,8 @@ inline void spectral_solver_3d(
     Eigen::Matrix3d& sig_macro,
     int max_iter = 200,
     double tol = 1e-6,
-    bool verbose = false) 
+    bool verbose = false,
+    const std::vector<Eigen::Matrix3d>& eps_plastic = {}) 
 {
     int N = nx * ny * nz;
     double E_avg = 0.0, nu_avg = 0.0;
@@ -484,7 +493,7 @@ inline void spectral_solver_3d(
     // Lippmann-Schwinger loop
     for (int it = 0; it < max_iter; ++it) {
         // 1. Stress calculation: sig = C : eps
-        std::vector<Eigen::Matrix3d> sig = stress_from_strain_3d(eps, lam, mu);
+        std::vector<Eigen::Matrix3d> sig = stress_from_strain_3d(eps, lam, mu, eps_plastic);
 
         // 2. Reference stress: sig0 = C0 : eps
         std::vector<Eigen::Matrix3d> tau(N);
@@ -572,7 +581,7 @@ inline void spectral_solver_3d(
     }
 
     // Compute final stresses and macros
-    sig_out = stress_from_strain_3d(eps, lam, mu);
+    sig_out = stress_from_strain_3d(eps, lam, mu, eps_plastic);
     eps_macro = Eigen::Matrix3d::Zero();
     sig_macro = Eigen::Matrix3d::Zero();
     for (int i = 0; i < N; ++i) {
