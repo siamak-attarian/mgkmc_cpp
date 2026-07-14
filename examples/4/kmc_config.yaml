@@ -1,0 +1,97 @@
+seed: 10
+simulation_type: "kmc"
+
+system:
+  dimensionality: "2d"
+  plane_mode: "plane_stress"
+  nx: 128
+  ny: 128
+  pixel: 0.7       
+  M: 20            
+  gamma0: 0.14     
+  num_threads: 1
+
+material:
+  E:
+    mode: "constant"
+    value: 71
+
+  nu:
+    mode: "constant"
+    value: 0.3
+
+physics:
+  enable_softening: true
+  softening_scheme: "isotropic"
+  jp: 21.67816876923379
+  jt: 3.520691045942302
+  neighbor_softening_fraction: 0.0
+  q_act_temp: 0.17664541533759284
+  softening_cap: 1.0816739498495038
+  stability_threshold: 0.0
+  redraw_directions: true
+  redraw_barriers: true
+
+
+barriers:
+  type: "gaussian"
+  kwargs:
+    mean: 1.8
+    std: 0.5756250940200325
+    min_cutoff: 0.0
+
+dynamics:
+  fast_patching:
+    enabled: false
+    patch_radius: 3
+    sync_interval: 100
+  temperature: 10.0
+  physical_strain_rate: 1.0e8
+  nu0: 1.0e13
+  instability_mode: "kmc"
+  cascade_timing: "none"
+  scale_rate_by_volume: false
+
+loading:
+  eps_target: 0.12
+  step_size: 1.0e-4
+
+boundary_conditions:
+  driving_component: "xx"
+  mixed_targets:
+    yy: 0.0
+  mixed_tol: 1.0
+
+output:
+  directory: "simulation_results"
+  duplicate_directory_action: "delete"
+  checkpoint_interval: "none"
+  vtk_interval: "none"
+  enable_summary_log: true
+  enable_global_log: true
+  enable_console: true
+  enable_save_q: false
+  save_q_interval: 1
+  save_q_elastic_only: true
+  enable_plotting: true
+  summary_filename: "summary_log.txt"
+  enable_cascade_log: false
+  enable_kmc_log: false
+  vtk_elastic_only: true
+  track_cascades: false
+  enable_config_backup: false
+
+
+# Detection Metrics
+detection:
+  stop_on_stress_drop: 0.20       # Drop fraction to stop (0.20 = 20%)
+  stop_post_drop_steps: 20        # Steps to continue after drop detection
+  ignore_drop_steps: 10           # Initial steps to ignore detection
+  stress_drop_lookback: 10         # Number of steps to look back for drop calculation
+  max_cascade_steps_pct: 0.3      # [NEW] Stop cascade if steps > 30% of voxels
+  max_kmc_steps_pct: 0.3          # [NEW] Stop if sequential KMC steps > 30% of voxels
+
+# Checkpoint Resume (Optional)
+# resume:
+#   mode: "none"                   # "resume", "resume_or_initiate", or "none"
+#   checkpoint_path: "simulation_results/checkpoint_000100.h5"

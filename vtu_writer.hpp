@@ -269,6 +269,39 @@ inline void export_to_vtu(
     print_cell_scalar("sig_yz", sig_yz);
     print_cell_scalar("sig_vm", sig_vm);
     
+    // Export elastic strain components
+    std::vector<double> ee_xx(num_cells), ee_yy(num_cells), ee_zz(num_cells);
+    std::vector<double> ee_xy(num_cells), ee_xz(num_cells), ee_yz(num_cells);
+    std::vector<double> ee_vm(num_cells);
+    
+    for (int idx = 0; idx < num_cells; ++idx) {
+        Eigen::Matrix3d eps_el;
+        if (!eps_plastic.empty() && eps_plastic.size() == (size_t)num_cells) {
+            eps_el = eps[idx] - eps_plastic[idx];
+        } else {
+            eps_el = eps[idx];
+        }
+        
+        ee_xx[idx] = eps_el(0, 0);
+        ee_yy[idx] = eps_el(1, 1);
+        ee_zz[idx] = eps_el(2, 2);
+        ee_xy[idx] = eps_el(0, 1);
+        ee_xz[idx] = eps_el(0, 2);
+        ee_yz[idx] = eps_el(1, 2);
+        
+        double tr_ee = eps_el.trace();
+        Eigen::Matrix3d ee_dev = eps_el - Eigen::Matrix3d::Identity() * (tr_ee / 3.0);
+        ee_vm[idx] = std::sqrt((2.0 / 3.0) * ee_dev.squaredNorm());
+    }
+    
+    print_cell_scalar("eps_elastic_xx", ee_xx);
+    print_cell_scalar("eps_elastic_yy", ee_yy);
+    print_cell_scalar("eps_elastic_zz", ee_zz);
+    print_cell_scalar("eps_elastic_xy", ee_xy);
+    print_cell_scalar("eps_elastic_xz", ee_xz);
+    print_cell_scalar("eps_elastic_yz", ee_yz);
+    print_cell_scalar("eps_elastic_vm", ee_vm);
+    
     if (!Tlocal.empty()) {
         print_cell_scalar("temperature", Tlocal);
     }
