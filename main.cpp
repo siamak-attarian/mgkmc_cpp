@@ -45,6 +45,14 @@ int main(int argc, char* argv[]) {
     std::transform(dimensionality.begin(), dimensionality.end(), dimensionality.begin(), ::tolower);
     bool is_3d = (dimensionality == "3d");
     
+    std::string strain_assumption = config.getString("system.strain_assumption", "small_strain");
+    if (strain_assumption == "finite_strain") {
+        std::cerr << "Error: system.strain_assumption 'finite_strain' is not implemented in this "
+                     "C++ build (small-strain only) — refusing to silently run the wrong physics."
+                  << std::endl;
+        return 1;
+    }
+
     std::string plane_mode = config.getString("system.plane_mode", "plane_strain");
     int nx = config.getInt("system.nx", 32);
     int ny = config.getInt("system.ny", 32);
@@ -53,9 +61,36 @@ int main(int argc, char* argv[]) {
     
     int N = nx * ny * nz;
     std::vector<double> E_field(N);
+    std::vector<double> nu_field(N);
+
+    // Direct Lame-parameter material input (material.lambda/material.mu),
+    // as used by e.g. the Landau small-strain configs. Converted to E/nu
+    // using the exact formulas run.py uses, so everything downstream (the
+    // existing E/nu-based constructor path, the Hookean solver) is
+    // unaffected: E = mu*(3*lam+2*mu)/(lam+mu), nu = lam/(2*(lam+mu)).
+    bool material_from_lame = !config.getString("material.lambda", "").empty()
+                            && !config.getString("material.mu", "").empty();
+    if (material_from_lame) {
+        double lam_val = config.getDouble("material.lambda", 0.0);
+        double mu_val = config.getDouble("material.mu", 0.0);
+        if (std::abs(lam_val) < 1e6 && lam_val != 0.0) {
+            std::cout << " [main] Detected material.lambda in GPa (" << lam_val << "). Converting to Pa (*1e9)." << std::endl;
+            lam_val *= 1e9;
+        }
+        if (std::abs(mu_val) < 1e6 && mu_val != 0.0) {
+            std::cout << " [main] Detected material.mu in GPa (" << mu_val << "). Converting to Pa (*1e9)." << std::endl;
+            mu_val *= 1e9;
+        }
+        double E_val = mu_val * (3.0 * lam_val + 2.0 * mu_val) / (lam_val + mu_val);
+        double nu_val = lam_val / (2.0 * (lam_val + mu_val));
+        std::fill(E_field.begin(), E_field.end(), E_val);
+        std::fill(nu_field.begin(), nu_field.end(), nu_val);
+        std::cout << " [main] material.lambda/mu -> derived E=" << E_val / 1e9
+                  << " GPa, nu=" << nu_val << std::endl;
+    } else {
     std::string E_mode = config.getString("material.E.mode", "constant");
     std::transform(E_mode.begin(), E_mode.end(), E_mode.begin(), ::tolower);
-    
+
     if (E_mode == "constant") {
         double E_val = config.getDouble("material.E.value", 70.0);
         if (E_val < 1e6) {
@@ -146,7 +181,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::vector<double> nu_field(N);
     std::string nu_mode = config.getString("material.nu.mode", "constant");
     std::transform(nu_mode.begin(), nu_mode.end(), nu_mode.begin(), ::tolower);
     
@@ -213,11 +247,12 @@ int main(int argc, char* argv[]) {
             has_clip_max, clip_max,
             seed
         );
-    } 
+    }
     else {
         std::cerr << "Error: Unsupported material nu mode: " << nu_mode << std::endl;
         return 1;
     }
+    } // end !material_from_lame
 
     double E_avg = 0.0;
     for (double val : E_field) E_avg += val;
@@ -300,7 +335,16 @@ int main(int argc, char* argv[]) {
         bool redraw_d = config.getBool("physics.redraw_directions", true);
         double stab_thresh = config.getDouble("physics.stability_threshold", 0.0);
         
-        std::string instab_mode = config.getString("dynamics.instability_mode", "cascade");
+        // Python's real config key is `dynamics.cascade_mode` (bool, default
+        // False -> sequential KMC, not cascade). `dynamics.instability_mode`
+        // is a C++-only key some existing examples use directly; prefer
+        // cascade_mode when present so Python YAMLs behave identically.
+        std::string instab_mode;
+        if (!config.getString("dynamics.cascade_mode", "").empty()) {
+            instab_mode = config.getBool("dynamics.cascade_mode", false) ? "cascade" : "kmc";
+        } else {
+            instab_mode = config.getString("dynamics.instability_mode", "cascade");
+        }
         std::string casc_timing = config.getString("dynamics.cascade_timing", "none");
         bool scale_vol = config.getBool("dynamics.scale_rate_by_volume", true);
         double nu0_val = config.getDouble("dynamics.nu0", 1e13);
@@ -315,6 +359,40 @@ int main(int argc, char* argv[]) {
         double gamma0_val = config.getDouble("system.gamma0", 0.14);
         int seed_val = config.getInt("seed", 42);
         bool use_3d_barriers = config.getBool("system.3d_barriers", false);
+
+        // Optional nonlinear small-strain model (currently: "landau" only).
+        std::string hyperelastic_model = config.getString("system.hyperelastic_model", "linear");
+        auto autoscale_gpa = [](double v) {
+            if (std::abs(v) < 1e6 && v != 0.0) return v * 1e9;
+            return v;
+        };
+        double landau_v1 = autoscale_gpa(config.getDouble("material.v1", 0.0));
+        double landau_v2 = autoscale_gpa(config.getDouble("material.v2", 0.0));
+        double landau_v3 = autoscale_gpa(config.getDouble("material.v3", 0.0));
+        double landau_g1 = autoscale_gpa(config.getDouble("material.g1", 0.0));
+        double landau_g2 = autoscale_gpa(config.getDouble("material.g2", 0.0));
+        double landau_g3 = autoscale_gpa(config.getDouble("material.g3", 0.0));
+        double landau_g4 = autoscale_gpa(config.getDouble("material.g4", 0.0));
+
+        StrainCappingParams strain_capping;
+        strain_capping.enabled = config.getBool("material.strain_capping_enabled", false);
+        strain_capping.limit = config.getDouble("material.strain_capping_limit", -1.0);
+        strain_capping.tangent_ratio = config.getDouble("material.strain_capping_tangent_ratio", 0.1);
+        strain_capping.type = config.getString("material.strain_capping_type", "piecewise");
+        strain_capping.smooth_power = config.getDouble("material.strain_capping_smooth_power", 1.0);
+
+        if (hyperelastic_model == "landau" && is_3d) {
+            std::cerr << "Error: hyperelastic_model 'landau' is only implemented for 2D in this build." << std::endl;
+            return 1;
+        }
+        if (hyperelastic_model == "landau") {
+            std::string small_strain_solver = config.getString("system.solver", "dbfft");
+            if (small_strain_solver != "dbfft") {
+                std::cerr << "Error: small-strain hyperelastic_model 'landau' only implements "
+                             "solver='dbfft' in this build (got '" << small_strain_solver << "')." << std::endl;
+                return 1;
+            }
+        }
         
         // 2. Parse driving component and mixed targets
         int drv_i = 0, drv_j = 0;
@@ -399,7 +477,9 @@ int main(int argc, char* argv[]) {
                 bg, soft_scheme, soft_cap, jp_val, jt_val, neigh_frac,
                 q_act, out_dir, temp_val, strain_rate_val, stab_thresh, nu0_val,
                 plane_mode, fp_enabled, fp_radius, fp_sync,
-                instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, seed_val
+                instab_mode, casc_timing, scale_vol, redraw_d, redraw_b, seed_val,
+                hyperelastic_model, landau_v1, landau_v2, landau_v3,
+                landau_g1, landau_g2, landau_g3, landau_g4, strain_capping
             );
             
             sim.run_simulation(

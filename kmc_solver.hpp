@@ -16,6 +16,7 @@
 #include <Eigen/Dense>
 
 #include "linear_elastic_solver.hpp"
+#include "landau_elastic_solver.hpp"
 #include "vtu_writer.hpp"
 
 // Forward declaration of get_current_timestamp
@@ -151,6 +152,22 @@ public:
     std::vector<GreenTensor> Gamma;
     BarrierGenerator barrier_gen;
     std::mt19937 rng;
+
+    // Optional nonlinear small-strain model (hyperelastic_model="landau").
+    // lam_field/mu_field are always derived via the plane_strain Lame formula
+    // regardless of `plane_mode` — the plane-stress reduction happens inside
+    // the Landau stress function's e33 Newton solve, not via a modified
+    // in-plane lambda (mirrors kmc_simulator.py:470-511). landau_Gamma is a
+    // SEPARATE cache from `Gamma` above for exactly that reason: the
+    // existing Gamma uses the config's plane_mode-reduced Lame lambda, which
+    // would be wrong for the Landau reference medium.
+    std::string hyperelastic_model = "linear";
+    double landau_v1 = 0.0, landau_v2 = 0.0, landau_v3 = 0.0;
+    double landau_g1 = 0.0, landau_g2 = 0.0, landau_g3 = 0.0, landau_g4 = 0.0;
+    StrainCappingParams strain_capping;
+    std::vector<double> lam_field, mu_field;
+    std::vector<double> landau_e33_state;
+    std::vector<GreenTensor> landau_Gamma;
     
     // Fast Patching data structures
     std::vector<std::vector<Eigen::Matrix2d>> patch_kernels; // 2 bases, each size (2*R+1)*(2*R+1)
@@ -178,7 +195,11 @@ public:
         std::string instability_mode_ = "cascade", std::string cascade_timing_ = "none",
         bool scale_rate_by_volume_ = true,
         bool redraw_directions_ = true, bool redraw_barriers_ = true,
-        int seed_ = 42
+        int seed_ = 42,
+        std::string hyperelastic_model_ = "linear",
+        double landau_v1_ = 0.0, double landau_v2_ = 0.0, double landau_v3_ = 0.0,
+        double landau_g1_ = 0.0, double landau_g2_ = 0.0, double landau_g3_ = 0.0, double landau_g4_ = 0.0,
+        StrainCappingParams strain_capping_ = StrainCappingParams()
     ) : nx(nx_), ny(ny_), M(M_), gamma0(gamma0_), pixel(pixel_), volume(pixel_ * pixel_ * pixel_),
         output_dir(output_dir_), softening_scheme(softening_scheme_), softening_cap(softening_cap_),
         jp(jp_), jt(jt_), neighbor_softening_fraction(neighbor_softening_fraction_),
@@ -188,7 +209,12 @@ public:
         flips_since_sync(0), instability_mode(instability_mode_), cascade_timing(cascade_timing_),
         scale_rate_by_volume(scale_rate_by_volume_),
         redraw_directions(redraw_directions_), redraw_barriers(redraw_barriers_),
-        barrier_gen(barrier_gen_), rng(seed_), sigma_macro_unit_initialized(false)
+        barrier_gen(barrier_gen_), rng(seed_),
+        hyperelastic_model(hyperelastic_model_),
+        landau_v1(landau_v1_), landau_v2(landau_v2_), landau_v3(landau_v3_),
+        landau_g1(landau_g1_), landau_g2(landau_g2_), landau_g3(landau_g3_), landau_g4(landau_g4_),
+        strain_capping(strain_capping_),
+        sigma_macro_unit_initialized(false)
     {
         E_field = E_field_;
         nu_field = nu_field_;
@@ -238,7 +264,7 @@ public:
                 }
             }
         }
-        
+
         // Precompute Gamma
         double E_sum = 0.0;
         double nu_sum = 0.0;
@@ -249,7 +275,38 @@ public:
         double E_avg = E_sum / N;
         double nu_avg = nu_sum / N;
         init_gamma(E_avg, nu_avg);
-        
+
+        // Landau model: lam/mu are always derived via the plane_strain Lame
+        // formula (the true 3D lambda), regardless of the config's
+        // plane_mode — matching kmc_simulator.py's design (the plane-stress
+        // reduction happens inside the e33 Newton solve, not here). The
+        // reference Green's operator for this model uses those same
+        // plane_strain-formula averages, hence the separate landau_Gamma
+        // cache (built once; only depends on E_avg/nu_avg, which are fixed
+        // for the life of a run).
+        if (hyperelastic_model == "landau") {
+            lam_field.resize(N);
+            mu_field.resize(N);
+            for (int i = 0; i < N; ++i) {
+                auto [l, m] = compute_lame_2d(E_field[i], nu_field[i], "plane_strain");
+                lam_field[i] = l;
+                mu_field[i] = m;
+            }
+            auto [lam0_landau, mu0_landau] = compute_lame_2d(E_avg, nu_avg, "plane_strain");
+            double Lx = nx * pixel, Ly = ny * pixel;
+            std::vector<double> kx(N), ky(N);
+            std::vector<double> kx_1d = fftfreq(nx, Lx / nx);
+            std::vector<double> ky_1d = fftfreq(ny, Ly / ny);
+            for (int x = 0; x < nx; ++x) {
+                for (int y = 0; y < ny; ++y) {
+                    int idx = x * ny + y;
+                    kx[idx] = 2.0 * M_PI * kx_1d[x];
+                    ky[idx] = 2.0 * M_PI * ky_1d[y];
+                }
+            }
+            landau_Gamma = green_operator_2d(nx, ny, kx, ky, lam0_landau, mu0_landau);
+        }
+
         // Precompute patches if fast patching enabled
         if (fast_patching_enabled) {
             precompute_patch_kernels();
@@ -332,10 +389,20 @@ public:
     }
     
     void elastic_run() {
-        spectral_solver_2d(
-            nx, ny, E_field, nu_field, eps_macro, plane_mode, Gamma,
-            eps_field, sig_field, eps_macro, sig_macro, 200, 1e-6, false, eps_plastic
-        );
+        if (hyperelastic_model == "landau") {
+            spectral_solver_landau_2d(
+                nx, ny, lam_field, mu_field,
+                landau_v1, landau_v2, landau_v3, landau_g1, landau_g2, landau_g3, landau_g4,
+                eps_macro, plane_mode, landau_Gamma, strain_capping, landau_e33_state,
+                eps_field, sig_field, eps_macro, sig_macro,
+                400, 1e-6, 5, false, eps_plastic
+            );
+        } else {
+            spectral_solver_2d(
+                nx, ny, E_field, nu_field, eps_macro, plane_mode, Gamma,
+                eps_field, sig_field, eps_macro, sig_macro, 200, 1e-6, false, eps_plastic
+            );
+        }
     }
     
     void update_barriers() {
@@ -959,12 +1026,18 @@ public:
             for (double val : nu_field) nu_sum += val;
             double E_avg = E_sum / E_field.size();
             double nu_avg = nu_sum / nu_field.size();
-            
+
+            // Secant history for stress-controlled components; reset each
+            // elastic step (the driven strain changed in between, which
+            // would pollute a cross-step slope estimate). Mirrors
+            // kmc_simulator.py:1107-1143.
+            std::map<std::pair<int, int>, double> prev_eps_sc, prev_sig_sc;
+
             for (int it = 0; it < mixed_max_iter; ++it) {
                 elastic_run();
                 Eigen::Matrix2d stress_err = Eigen::Matrix2d::Zero();
                 double err_max = 0.0;
-                
+
                 for (const auto& target : stress_targets) {
                     int mi = target.first.first;
                     int mj = target.first.second;
@@ -972,17 +1045,33 @@ public:
                     stress_err(mi, mj) = err;
                     err_max = std::max(err_max, std::abs(err));
                 }
-                
+
                 if (err_max < mixed_tol) {
                     break;
                 }
-                
+
                 double tr_sig = stress_err.trace();
                 Eigen::Matrix2d d_eps = (stress_err - nu_avg * tr_sig * Eigen::Matrix2d::Identity()) / E_avg;
                 for (const auto& target : stress_targets) {
                     int mi = target.first.first;
                     int mj = target.first.second;
-                    eps_macro(mi, mj) += d_eps(mi, mj);
+                    auto key = target.first;
+                    double step_eps = d_eps(mi, mj);
+
+                    auto it_eps = prev_eps_sc.find(key);
+                    if (it_eps != prev_eps_sc.end()) {
+                        double d_e = eps_macro(mi, mj) - it_eps->second;
+                        double d_s = sig_macro(mi, mj) - prev_sig_sc[key];
+                        if (std::abs(d_e) > 1e-14 && std::isfinite(d_s)) {
+                            double slope = d_s / d_e;
+                            if (std::isfinite(slope) && slope > 0.01 * E_avg) {
+                                step_eps = stress_err(mi, mj) / slope;
+                            }
+                        }
+                    }
+                    prev_eps_sc[key] = eps_macro(mi, mj);
+                    prev_sig_sc[key] = sig_macro(mi, mj);
+                    eps_macro(mi, mj) += step_eps;
                 }
             }
             
