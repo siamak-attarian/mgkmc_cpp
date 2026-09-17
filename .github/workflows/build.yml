@@ -1,0 +1,74 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      # Prints the Landau stress response for four reference strain states.
+      - name: Reference check
+        run: ./build/test_landau_stress
+
+      # Example 1 is homogeneous linear elasticity, so its answer is known in
+      # closed form: sigma_xx / eps_xx must equal E = 70 GPa under plane stress.
+      - name: Run example 1 and verify against closed-form elasticity
+        working-directory: examples/1_uniaxial_tension_2d_homogeneous
+        run: |
+          ../../build/mgkmc plane_stress.yaml
+          python3 - <<'PY'
+          import sys, pathlib
+          log = pathlib.Path("output_plane_stress/summary_log.txt")
+          rows = [l.split() for l in log.read_text().splitlines() if l[:2].isdigit()]
+          eps, sig = float(rows[-1][4]), float(rows[-1][5])
+          apparent_E = sig / eps
+          print(f"eps_xx={eps}  sig_xx={sig} GPa  ->  E={apparent_E:.4f} GPa (expected 70)")
+          if abs(apparent_E - 70.0) > 0.05:
+              sys.exit(f"FAIL: apparent modulus {apparent_E:.4f} GPa differs from E=70 GPa")
+          print("OK")
+          PY
+
+  build-mingw:
+    name: windows (mingw)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Reference check
+        run: ./build/test_landau_stress.exe

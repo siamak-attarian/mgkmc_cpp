@@ -1,25 +1,51 @@
-# Binaries and build outputs
-main.exe
-main
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+build/
 *.o
 *.obj
 *.exe
+main
+test_landau_stress
 
-# Simulation results and generated VTK data
-simulation_results/
+# ---------------------------------------------------------------------------
+# Simulation output
+# ---------------------------------------------------------------------------
+# Runs write into the directory named by `output.directory` in the config.
+simulation_results*/
 output*/
+cpp_results/
+cpp_vtk_results/
+python_results/
 *.vtu
+*.vti
+*.h5
+*.hdf5
+*.npy
 
-# IDE/Editor files
+# ---------------------------------------------------------------------------
+# Local scratch configs (not part of the published examples)
+# ---------------------------------------------------------------------------
+cpp_test_config.yaml
+cpp_vtk_test_config.yaml
+python_test_config.yaml
+cpp_heterogeneous_config.yaml
+cpp_heterogeneous_3d_config.yaml
+
+# ---------------------------------------------------------------------------
+# DAMASK reference data
+# ---------------------------------------------------------------------------
+# Multi-gigabyte DAMASK solver output kept locally for cross-checks; not
+# distributed with the repository.
+**/Damask_comparison/
+**/DAMASK/
+
+# ---------------------------------------------------------------------------
+# IDE / OS
+# ---------------------------------------------------------------------------
 .vscode/
 .idea/
 *.suo
 *.user
-
-# Custom run results
-cpp_results/
-cpp_vtk_results/
-python_results/
-cpp_test_config.yaml
-cpp_vtk_test_config.yaml
-python_test_config.yaml
+.DS_Store
+Thumbs.db

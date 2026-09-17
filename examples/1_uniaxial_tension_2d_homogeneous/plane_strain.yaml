@@ -1,3 +1,5 @@
+simulation_type: "linear_elastic"
+
 system:
   dimensionality: "2d"
   plane_mode: "plane_strain"
